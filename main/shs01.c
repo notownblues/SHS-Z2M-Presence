@@ -115,6 +115,21 @@ static bool shs_occupancy_state = false;
 /* Zigbee ready flag */
 static volatile bool shs_zb_ready = false;
 
+/* Network connectivity tracking for auto-recovery */
+static volatile bool shs_zb_connected = false;
+static uint32_t shs_last_successful_tx = 0;
+#define SHS_ZB_LOCK_TIMEOUT_MS     100    /* Timeout for Zigbee lock acquisition */
+#define SHS_ZB_CONNECTIVITY_CHECK_MS  60000  /* Check connectivity every 60s */
+
+/* Helper macro: acquire Zigbee lock with timeout, returns on failure */
+#define SHS_ZB_LOCK_ACQUIRE_OR_RETURN() \
+    do { \
+        if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_ZB_LOCK_TIMEOUT_MS)) != true) { \
+            ESP_LOGD(SHS_TAG, "Zigbee lock timeout, skipping update"); \
+            return; \
+        } \
+    } while(0)
+
 /* ============================================================================
  * LD2450 LIVE DATA - Standard clusters only (no flooding)
  * ============================================================================ */
@@ -433,6 +448,7 @@ static void shs_zone_cfg_apply_to_sensor(void) {
 static bool is_valid_target(const ld2450_target_t *target);
 static void shs_zigbee_task(void *pvParameters);
 static void shs_zb_set_binary_value(uint8_t endpoint, bool value);
+static void shs_bdb_start_top_level_commissioning_cb(uint8_t mode_mask);
 
 /* ============================================================================
  * ZIGBEE ATTRIBUTE HELPERS
@@ -441,7 +457,7 @@ static void shs_zb_set_binary_value(uint8_t endpoint, bool value);
 static void shs_zb_set_occ_bitmap(uint8_t endpoint, bool occupied) {
     if (!shs_zb_ready) return;
     uint8_t v = occupied ? 1 : 0;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(endpoint,
                                  ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
                                  ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
@@ -453,7 +469,7 @@ static void shs_zb_set_occ_bitmap(uint8_t endpoint, bool occupied) {
 static void shs_zb_set_bool_attr(uint8_t endpoint, uint16_t cluster, uint16_t attr_id, bool value) {
     if (!shs_zb_ready) return;
     bool v = value;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(endpoint, cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE, attr_id, &v, false);
     esp_zb_lock_release();
 }
@@ -477,22 +493,23 @@ static void shs_zb_report_attr(uint8_t endpoint, uint16_t cluster, uint16_t attr
         .attributeID = attr_id,
     };
 
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
+    shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     esp_zb_lock_release();
 }
 
 /* Generic Zigbee attribute setters for signed int16 values (for position reporting) */
 __attribute__((unused)) static void shs_zb_set_i16_attr(uint8_t endpoint, uint16_t cluster, uint16_t attr_id, int16_t value) {
     if (!shs_zb_ready) return;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(endpoint, cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE, attr_id, &value, true);
     esp_zb_lock_release();
 }
 
 static void shs_zb_set_ou_delay_ep2(uint16_t seconds) {
     if (!shs_zb_ready) return;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(SHS_EP_OCC,
                                  ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
                                  ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
@@ -624,7 +641,7 @@ static void shs_on_state_change(const ld2410_state_t *state) {
 static void shs_zb_set_analog_value(uint8_t endpoint, float value) {
     if (!shs_zb_ready) return;
 
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(
         endpoint,
         SHS_CLUSTER_ANALOG_INPUT,
@@ -655,8 +672,9 @@ static void shs_zb_report_analog_attr(uint8_t endpoint) {
         .attributeID = SHS_ATTR_PRESENT_VALUE,
     };
 
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
+    shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     esp_zb_lock_release();
 }
 
@@ -665,7 +683,7 @@ static void shs_zb_set_binary_value(uint8_t endpoint, bool value) {
     if (!shs_zb_ready) return;
 
     uint8_t val = value ? 1 : 0;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_set_attribute_val(
         endpoint,
         SHS_CLUSTER_BINARY_INPUT,
@@ -696,8 +714,9 @@ static void shs_zb_report_binary_attr(uint8_t endpoint) {
         .attributeID = SHS_ATTR_PRESENT_VALUE_BINARY,
     };
 
-    esp_zb_lock_acquire(portMAX_DELAY);
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
+    shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     esp_zb_lock_release();
 }
 
@@ -903,8 +922,15 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
 }
 
 /**
+ * @brief Helper macro for force update functions - acquire lock with 500ms timeout
+ * Uses longer timeout for initial updates since they only run at boot/rejoin
+ */
+#define SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS  500
+
+/**
  * @brief Force update all LD2450 attributes to Zigbee
- * Called once when Zigbee becomes ready
+ * Called once when Zigbee becomes ready.
+ * Split into individual lock/release pairs to prevent blocking Zigbee task.
  */
 static void shs_ld2450_force_update(void) {
     ESP_LOGI(SHS_TAG, "Forcing LD2450 state update to Zigbee: occ=%d count=%d z1=%d z2=%d z3=%d",
@@ -914,227 +940,274 @@ static void shs_ld2450_force_update(void) {
     /* Give Z2M a moment to finish pairing interview */
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    /* Set values and trigger reports by using report=true parameter */
-    esp_zb_lock_acquire(portMAX_DELAY);
-
     /* EP3: LD2450 occupancy */
-    uint8_t occ_val = shs_ld2450_occupancy ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2450_OCC,
-        ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
-        &occ_val,
-        true  /* report = true to trigger attribute report */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t occ_val = shs_ld2450_occupancy ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2450_OCC,
+            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            &occ_val,
+            true  /* report = true to trigger attribute report */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));  /* Brief yield to Zigbee stack */
 
     /* EP4: Target count */
-    float count_val = (float)shs_ld2450_target_count;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2450_TARGET_COUNT,
-        SHS_CLUSTER_ANALOG_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE,
-        &count_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        float count_val = (float)shs_ld2450_target_count;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2450_TARGET_COUNT,
+            SHS_CLUSTER_ANALOG_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE,
+            &count_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP5: Zone 1 */
-    uint8_t z1_val = shs_zone1_occupied ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2450_ZONE1,
-        SHS_CLUSTER_BINARY_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE_BINARY,
-        &z1_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t z1_val = shs_zone1_occupied ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2450_ZONE1,
+            SHS_CLUSTER_BINARY_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE_BINARY,
+            &z1_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP6: Zone 2 */
-    uint8_t z2_val = shs_zone2_occupied ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2450_ZONE2,
-        SHS_CLUSTER_BINARY_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE_BINARY,
-        &z2_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t z2_val = shs_zone2_occupied ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2450_ZONE2,
+            SHS_CLUSTER_BINARY_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE_BINARY,
+            &z2_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP7: Zone 3 */
-    uint8_t z3_val = shs_zone3_occupied ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2450_ZONE3,
-        SHS_CLUSTER_BINARY_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE_BINARY,
-        &z3_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t z3_val = shs_zone3_occupied ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2450_ZONE3,
+            SHS_CLUSTER_BINARY_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE_BINARY,
+            &z3_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP19: Zone 1 target count */
-    float z1_targets_val = (float)shs_zone1_targets;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_ZONE1_TARGETS,
-        SHS_CLUSTER_ANALOG_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE,
-        &z1_targets_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        float z1_targets_val = (float)shs_zone1_targets;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_ZONE1_TARGETS,
+            SHS_CLUSTER_ANALOG_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE,
+            &z1_targets_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP20: Zone 2 target count */
-    float z2_targets_val = (float)shs_zone2_targets;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_ZONE2_TARGETS,
-        SHS_CLUSTER_ANALOG_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE,
-        &z2_targets_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        float z2_targets_val = (float)shs_zone2_targets;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_ZONE2_TARGETS,
+            SHS_CLUSTER_ANALOG_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE,
+            &z2_targets_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP21: Zone 3 target count */
-    float z3_targets_val = (float)shs_zone3_targets;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_ZONE3_TARGETS,
-        SHS_CLUSTER_ANALOG_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE,
-        &z3_targets_val,
-        true  /* report = true */
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        float z3_targets_val = (float)shs_zone3_targets;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_ZONE3_TARGETS,
+            SHS_CLUSTER_ANALOG_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE,
+            &z3_targets_val,
+            true  /* report = true */
+        );
+        esp_zb_lock_release();
+    }
 
-    esp_zb_lock_release();
-
+    shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     ESP_LOGI(SHS_TAG, "LD2450 force update complete (incl. zone target counts)");
 }
 
-/* Force update LD2410C and config attributes to Zigbee (for initial reporting) */
+/**
+ * Force update LD2410C and config attributes to Zigbee (for initial reporting)
+ * Split into smaller lock sections to prevent blocking Zigbee task.
+ */
 static void shs_ld2410c_force_update(void) {
     ESP_LOGI(SHS_TAG, "Force update LD2410C: moving=%d static=%d occ=%d",
              shs_moving_state, shs_static_state, shs_occupancy_state);
 
-    esp_zb_lock_acquire(portMAX_DELAY);
-
     /* EP2: LD2410C occupancy */
-    uint8_t occ_val = shs_occupancy_state ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_OCC,
-        ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
-        &occ_val,
-        true
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t occ_val = shs_occupancy_state ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_OCC,
+            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            &occ_val,
+            true
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP17: Moving target state (genBinaryInput - reliable) */
-    uint8_t moving_val = shs_moving_state ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2410C_MOVING,
-        SHS_CLUSTER_BINARY_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE_BINARY,
-        &moving_val,
-        true
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t moving_val = shs_moving_state ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2410C_MOVING,
+            SHS_CLUSTER_BINARY_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE_BINARY,
+            &moving_val,
+            true
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* EP18: Static target state (genBinaryInput - reliable) */
-    uint8_t static_val = shs_static_state ? 1 : 0;
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LD2410C_STATIC,
-        SHS_CLUSTER_BINARY_INPUT,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_PRESENT_VALUE_BINARY,
-        &static_val,
-        true
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t static_val = shs_static_state ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LD2410C_STATIC,
+            SHS_CLUSTER_BINARY_INPUT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_PRESENT_VALUE_BINARY,
+            &static_val,
+            true
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     /* Also update manufacturer-specific attrs for backwards compatibility */
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_OCC,
-        ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_OCC_MOVING_TARGET,
-        &moving_val,
-        true
-    );
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        uint8_t moving_val = shs_moving_state ? 1 : 0;
+        uint8_t static_val = shs_static_state ? 1 : 0;
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_OCC,
+            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_OCC_MOVING_TARGET,
+            &moving_val,
+            true
+        );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_OCC,
+            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_OCC_STATIC_TARGET,
+            &static_val,
+            true
+        );
+        esp_zb_lock_release();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_OCC,
-        ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_OCC_STATIC_TARGET,
-        &static_val,
-        true
-    );
+    /* EP1: Config cluster attributes - batch these together since they're related */
+    if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_MOVEMENT_COOLDOWN,
+            &shs_movement_cooldown_sec,
+            true
+        );
 
-    /* EP1: Config cluster attributes */
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_MOVEMENT_COOLDOWN,
-        &shs_movement_cooldown_sec,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_OCC_CLEAR_COOLDOWN,
+            &shs_occupancy_clear_sec,
+            true
+        );
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_OCC_CLEAR_COOLDOWN,
-        &shs_occupancy_clear_sec,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_MOVING_SENS_0_10,
+            &shs_sens_mv_0_10,
+            true
+        );
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_MOVING_SENS_0_10,
-        &shs_sens_mv_0_10,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_STATIC_SENS_0_10,
+            &shs_sens_st_0_10,
+            true
+        );
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_STATIC_SENS_0_10,
-        &shs_sens_st_0_10,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_MOVING_MAX_GATE,
+            &shs_moving_max_gate,
+            true
+        );
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_MOVING_MAX_GATE,
-        &shs_moving_max_gate,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_STATIC_MAX_GATE,
+            &shs_static_max_gate,
+            true
+        );
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_STATIC_MAX_GATE,
-        &shs_static_max_gate,
-        true
-    );
+        esp_zb_zcl_set_attribute_val(
+            SHS_EP_LIGHT,
+            SHS_CL_CFG_ID,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            SHS_ATTR_POSITION_REPORTING,
+            &shs_position_reporting,
+            true
+        );
+        esp_zb_lock_release();
+    }
 
-    esp_zb_zcl_set_attribute_val(
-        SHS_EP_LIGHT,
-        SHS_CL_CFG_ID,
-        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-        SHS_ATTR_POSITION_REPORTING,
-        &shs_position_reporting,
-        true
-    );
-
-    esp_zb_lock_release();
-
+    shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     ESP_LOGI(SHS_TAG, "LD2410C/Config force update complete (cooldown=%d, delay=%d, sens_mv=%d, sens_st=%d, gate_mv=%d, gate_st=%d)",
              shs_movement_cooldown_sec, shs_occupancy_clear_sec,
              shs_sens_mv_0_10, shs_sens_st_0_10,
@@ -1547,8 +1620,7 @@ static void shs_boot_button_task(void *pv) {
                     }
 
                     /* Update Zigbee attribute */
-                    if (shs_zb_ready) {
-                        esp_zb_lock_acquire(portMAX_DELAY);
+                    if (shs_zb_ready && esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_ZB_LOCK_TIMEOUT_MS))) {
                         esp_zb_zcl_set_attribute_val(
                             SHS_EP_LIGHT,
                             SHS_CL_CFG_ID,
@@ -1634,6 +1706,10 @@ static void shs_ld2450_task(void *pvParameters) {
     bool was_connected = false;
     const uint32_t RECOVERY_INTERVAL_MS = 30000;  // Try recovery every 30s if disconnected
 
+    /* Zigbee connectivity monitoring */
+    uint32_t last_zb_check_time = 0;
+    static bool zb_recovery_in_progress = false;
+
     while (1) {
         ld2450_process();
 
@@ -1666,6 +1742,27 @@ static void shs_ld2450_task(void *pvParameters) {
         }
 
         was_connected = connected;
+
+        /* Periodic Zigbee connectivity check (every 60 seconds) */
+        if (shs_zb_ready && (now - last_zb_check_time) >= SHS_ZB_CONNECTIVITY_CHECK_MS) {
+            last_zb_check_time = now;
+
+            /* Check if we haven't had a successful TX in a while (3 minutes) */
+            uint32_t time_since_last_tx = now - shs_last_successful_tx;
+            if (time_since_last_tx > 180000 && shs_last_successful_tx > 0 && !zb_recovery_in_progress) {
+                ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms - triggering network rejoin",
+                         (unsigned long)time_since_last_tx);
+                zb_recovery_in_progress = true;
+                shs_zb_connected = false;
+                esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                                       ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
+            } else if (shs_zb_connected && zb_recovery_in_progress) {
+                /* Recovery succeeded */
+                ESP_LOGI(SHS_TAG, "Zigbee: Network connectivity restored");
+                zb_recovery_in_progress = false;
+            }
+        }
+
         vTaskDelay(pdMS_TO_TICKS(20));  /* 20ms delay - priority 4 gives Zigbee room */
     }
 }
@@ -1687,7 +1784,10 @@ static void shs_basic_publish_metadata_ep1(void) {
     const char *sw_build = SHS_BASIC_SW_BUILD_ID;
     uint8_t power_src = 0x01;
 
-    esp_zb_lock_acquire(portMAX_DELAY);
+    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_FORCE_UPDATE_LOCK_TIMEOUT_MS))) {
+        ESP_LOGW(SHS_TAG, "Failed to acquire lock for metadata publish");
+        return;
+    }
 
     esp_zb_zcl_set_attribute_val(SHS_EP_LIGHT,
                                  ESP_ZB_ZCL_CLUSTER_ID_BASIC,
@@ -1724,6 +1824,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (err_status == ESP_OK) {
             shs_zb_ready = true;
+            shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
 
             /* Publish metadata */
             shs_basic_publish_metadata_ep1();
@@ -1742,7 +1843,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
                 ESP_LOGI(SHS_TAG, "Start network steering");
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
             } else {
-                ESP_LOGI(SHS_TAG, "Device rebooted");
+                ESP_LOGI(SHS_TAG, "Device rebooted - already joined network");
+                shs_zb_connected = true;
                 /* Device already joined - force update sensor states now */
                 shs_ld2410c_force_update();
                 shs_ld2450_force_update();
@@ -1758,14 +1860,43 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
             esp_zb_get_extended_pan_id(extended_pan_id);
             ESP_LOGI(SHS_TAG, "Joined network (PAN:0x%04hx, Ch:%d)",
                      esp_zb_get_pan_id(), esp_zb_get_current_channel());
+            shs_zb_connected = true;
+            shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
             /* Device just joined - force update sensor states now */
             shs_ld2410c_force_update();
             shs_ld2450_force_update();
         } else {
             ESP_LOGW(SHS_TAG, "Network steering not successful (%s)", esp_err_to_name(err_status));
+            shs_zb_connected = false;
             esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
                                    ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
         }
+        break;
+
+    case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
+        /* Device has lost connection to coordinator - attempt recovery */
+        ESP_LOGW(SHS_TAG, "Device unavailable signal (0x3c) - network connectivity lost");
+        shs_zb_connected = false;
+        /* Schedule network rejoin attempt after 5 seconds */
+        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 5000);
+        break;
+
+    case ESP_ZB_ZDO_SIGNAL_LEAVE:
+        /* Device is leaving the network */
+        ESP_LOGW(SHS_TAG, "Leave signal received - attempting to rejoin");
+        shs_zb_connected = false;
+        /* Schedule rejoin after 2 seconds */
+        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 2000);
+        break;
+
+    case ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT:
+        /* No parent/links available */
+        ESP_LOGW(SHS_TAG, "No active network links - attempting rejoin");
+        shs_zb_connected = false;
+        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 3000);
         break;
 
     default:

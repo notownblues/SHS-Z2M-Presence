@@ -28,3 +28,5 @@ Full tutorial coming soon.
 ## Credits
 
 Based on [SmartHomeScene/zigbee-esp32](https://github.com/SmartHomeScene/zigbee-esp32)
+
+See the original firmware and flashing guide: [DIY Zigbee mmWave Presence Sensor with ESP32-C6 and LD2410](https://smarthomescene.com/guides/diy-zigbee-mmwave-presence-sensor-with-esp32-c6-and-ld2410/)

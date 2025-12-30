@@ -121,13 +121,28 @@ static uint32_t shs_last_successful_tx = 0;
 #define SHS_ZB_LOCK_TIMEOUT_MS     100    /* Timeout for Zigbee lock acquisition */
 #define SHS_ZB_CONNECTIVITY_CHECK_MS  60000  /* Check connectivity every 60s */
 
+/* Diagnostic counters for lock acquisition */
+static uint32_t shs_lock_success_count = 0;
+static uint32_t shs_lock_fail_count = 0;
+static uint32_t shs_lock_consecutive_fails = 0;
+static uint32_t shs_tx_success_count = 0;
+static uint32_t shs_tx_fail_count = 0;
+
 /* Helper macro: acquire Zigbee lock with timeout, returns on failure */
 #define SHS_ZB_LOCK_ACQUIRE_OR_RETURN() \
     do { \
         if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_ZB_LOCK_TIMEOUT_MS)) != true) { \
-            ESP_LOGD(SHS_TAG, "Zigbee lock timeout, skipping update"); \
+            shs_lock_fail_count++; \
+            shs_lock_consecutive_fails++; \
+            if (shs_lock_consecutive_fails == 1 || shs_lock_consecutive_fails == 10 || \
+                shs_lock_consecutive_fails == 50 || (shs_lock_consecutive_fails % 100) == 0) { \
+                ESP_LOGW(SHS_TAG, "Zigbee lock timeout #%lu (consecutive: %lu)", \
+                         (unsigned long)shs_lock_fail_count, (unsigned long)shs_lock_consecutive_fails); \
+            } \
             return; \
         } \
+        shs_lock_success_count++; \
+        shs_lock_consecutive_fails = 0; \
     } while(0)
 
 /* ============================================================================
@@ -496,6 +511,7 @@ static void shs_zb_report_attr(uint8_t endpoint, uint16_t cluster, uint16_t attr
     SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
     shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
+    shs_tx_success_count++;
     esp_zb_lock_release();
 }
 
@@ -675,6 +691,7 @@ static void shs_zb_report_analog_attr(uint8_t endpoint) {
     SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
     shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
+    shs_tx_success_count++;
     esp_zb_lock_release();
 }
 
@@ -717,6 +734,7 @@ static void shs_zb_report_binary_attr(uint8_t endpoint) {
     SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
     shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
+    shs_tx_success_count++;
     esp_zb_lock_release();
 }
 
@@ -1747,13 +1765,23 @@ static void shs_ld2450_task(void *pvParameters) {
         if (shs_zb_ready && (now - last_zb_check_time) >= SHS_ZB_CONNECTIVITY_CHECK_MS) {
             last_zb_check_time = now;
 
-            /* Check if we haven't had a successful TX in a while (3 minutes) */
+            /* Log diagnostic stats */
             uint32_t time_since_last_tx = now - shs_last_successful_tx;
+            ESP_LOGI(SHS_TAG, "Zigbee stats: lock_ok=%lu lock_fail=%lu tx_ok=%lu last_tx=%lums ago",
+                     (unsigned long)shs_lock_success_count, (unsigned long)shs_lock_fail_count,
+                     (unsigned long)shs_tx_success_count, (unsigned long)time_since_last_tx);
+
+            /* Check if we haven't had a successful TX in a while (3 minutes) */
             if (time_since_last_tx > 180000 && shs_last_successful_tx > 0 && !zb_recovery_in_progress) {
                 ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms - triggering network rejoin",
                          (unsigned long)time_since_last_tx);
+                ESP_LOGW(SHS_TAG, "Zigbee: consecutive lock fails: %lu", (unsigned long)shs_lock_consecutive_fails);
                 zb_recovery_in_progress = true;
                 shs_zb_connected = false;
+                /* Reset counters after rejoin attempt */
+                shs_lock_fail_count = 0;
+                shs_lock_success_count = 0;
+                shs_tx_success_count = 0;
                 esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
                                        ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
             } else if (shs_zb_connected && zb_recovery_in_progress) {

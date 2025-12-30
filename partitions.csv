@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# Note: if you have increased the bootloader size, make sure to update the offsets to avoid overlap
+# WiFi + MQTT requires larger app partition (~1.4MB, increased from 900K to 1536K)
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xf000,   0x1000,
+factory,    app,  factory,  0x10000,  1536K,
+zb_storage, data, fat,      0x190000, 16K,
+zb_fct,     data, fat,      0x194000, 1K,

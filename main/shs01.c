@@ -66,16 +66,31 @@ static SemaphoreHandle_t target_data_mutex = NULL;
 #define SHS_NVS_KEY_Z1_Y1       "z1_y1"
 #define SHS_NVS_KEY_Z1_X2       "z1_x2"
 #define SHS_NVS_KEY_Z1_Y2       "z1_y2"
+#define SHS_NVS_KEY_Z1_TYPE     "z1_type"
 #define SHS_NVS_KEY_Z2_EN       "z2_en"
 #define SHS_NVS_KEY_Z2_X1       "z2_x1"
 #define SHS_NVS_KEY_Z2_Y1       "z2_y1"
 #define SHS_NVS_KEY_Z2_X2       "z2_x2"
 #define SHS_NVS_KEY_Z2_Y2       "z2_y2"
+#define SHS_NVS_KEY_Z2_TYPE     "z2_type"
 #define SHS_NVS_KEY_Z3_EN       "z3_en"
 #define SHS_NVS_KEY_Z3_X1       "z3_x1"
 #define SHS_NVS_KEY_Z3_Y1       "z3_y1"
 #define SHS_NVS_KEY_Z3_X2       "z3_x2"
 #define SHS_NVS_KEY_Z3_Y2       "z3_y2"
+#define SHS_NVS_KEY_Z3_TYPE     "z3_type"
+#define SHS_NVS_KEY_Z4_EN       "z4_en"
+#define SHS_NVS_KEY_Z4_X1       "z4_x1"
+#define SHS_NVS_KEY_Z4_Y1       "z4_y1"
+#define SHS_NVS_KEY_Z4_X2       "z4_x2"
+#define SHS_NVS_KEY_Z4_Y2       "z4_y2"
+#define SHS_NVS_KEY_Z4_TYPE     "z4_type"
+#define SHS_NVS_KEY_Z5_EN       "z5_en"
+#define SHS_NVS_KEY_Z5_X1       "z5_x1"
+#define SHS_NVS_KEY_Z5_Y1       "z5_y1"
+#define SHS_NVS_KEY_Z5_X2       "z5_x2"
+#define SHS_NVS_KEY_Z5_Y2       "z5_y2"
+#define SHS_NVS_KEY_Z5_TYPE     "z5_type"
 
 /* ============================================================================
  * CONFIGURATION STORAGE
@@ -158,23 +173,47 @@ static uint8_t shs_ld2450_target_count = 0;    /* 0-3 active targets */
 static bool shs_zone1_occupied = false;
 static bool shs_zone2_occupied = false;
 static bool shs_zone3_occupied = false;
+static bool shs_zone4_occupied = false;
+static bool shs_zone5_occupied = false;
 
 /* Zone target counts (how many targets in each zone) */
 static uint8_t shs_zone1_targets = 0;
 static uint8_t shs_zone2_targets = 0;
 static uint8_t shs_zone3_targets = 0;
+static uint8_t shs_zone4_targets = 0;
+static uint8_t shs_zone5_targets = 0;
 
 /* Zone configuration (received from Zigbee, applied to LD2450) */
-static uint8_t shs_zone_type = 0;  /* 0=disabled, 1=detection, 2=filter */
+/* Global zone type: 0=disabled, 1=detection, 2=filter */
+static uint8_t shs_zone_type = 0;
+
+/* Per-zone types: 0=off, 1=detection, 2=filter, 3=interference */
+static uint8_t shs_zone1_type = 0;
+static uint8_t shs_zone2_type = 0;
+static uint8_t shs_zone3_type = 0;
+static uint8_t shs_zone4_type = 0;
+static uint8_t shs_zone5_type = 0;
+
+/* Zone 1 */
 static bool    shs_zone1_enabled = false;
 static int16_t shs_zone1_x1 = -1500, shs_zone1_y1 = 0;
 static int16_t shs_zone1_x2 = 1500, shs_zone1_y2 = 3000;
+/* Zone 2 */
 static bool    shs_zone2_enabled = false;
 static int16_t shs_zone2_x1 = -1500, shs_zone2_y1 = 0;
 static int16_t shs_zone2_x2 = 1500, shs_zone2_y2 = 3000;
+/* Zone 3 */
 static bool    shs_zone3_enabled = false;
 static int16_t shs_zone3_x1 = -1500, shs_zone3_y1 = 0;
 static int16_t shs_zone3_x2 = 1500, shs_zone3_y2 = 3000;
+/* Zone 4 */
+static bool    shs_zone4_enabled = false;
+static int16_t shs_zone4_x1 = -1500, shs_zone4_y1 = 0;
+static int16_t shs_zone4_x2 = 1500, shs_zone4_y2 = 3000;
+/* Zone 5 */
+static bool    shs_zone5_enabled = false;
+static int16_t shs_zone5_x1 = -1500, shs_zone5_y1 = 0;
+static int16_t shs_zone5_x2 = 1500, shs_zone5_y2 = 3000;
 
 /* Zone config debounce - wait for all attributes to arrive before applying */
 #define SHS_ZONE_CFG_DEBOUNCE_MS  500  /* Wait 500ms after last attribute before applying */
@@ -311,21 +350,41 @@ static void shs_zone_cfg_save_to_nvs(void) {
     if (nvs_open("shs_cfg", NVS_READWRITE, &h) != ESP_OK) return;
 
     nvs_set_u8(h, SHS_NVS_KEY_ZONE_TYPE, shs_zone_type);
+    /* Zone 1 */
     nvs_set_u8(h, SHS_NVS_KEY_Z1_EN, shs_zone1_enabled ? 1 : 0);
     nvs_set_i16(h, SHS_NVS_KEY_Z1_X1, shs_zone1_x1);
     nvs_set_i16(h, SHS_NVS_KEY_Z1_Y1, shs_zone1_y1);
     nvs_set_i16(h, SHS_NVS_KEY_Z1_X2, shs_zone1_x2);
     nvs_set_i16(h, SHS_NVS_KEY_Z1_Y2, shs_zone1_y2);
+    nvs_set_u8(h, SHS_NVS_KEY_Z1_TYPE, shs_zone1_type);
+    /* Zone 2 */
     nvs_set_u8(h, SHS_NVS_KEY_Z2_EN, shs_zone2_enabled ? 1 : 0);
     nvs_set_i16(h, SHS_NVS_KEY_Z2_X1, shs_zone2_x1);
     nvs_set_i16(h, SHS_NVS_KEY_Z2_Y1, shs_zone2_y1);
     nvs_set_i16(h, SHS_NVS_KEY_Z2_X2, shs_zone2_x2);
     nvs_set_i16(h, SHS_NVS_KEY_Z2_Y2, shs_zone2_y2);
+    nvs_set_u8(h, SHS_NVS_KEY_Z2_TYPE, shs_zone2_type);
+    /* Zone 3 */
     nvs_set_u8(h, SHS_NVS_KEY_Z3_EN, shs_zone3_enabled ? 1 : 0);
     nvs_set_i16(h, SHS_NVS_KEY_Z3_X1, shs_zone3_x1);
     nvs_set_i16(h, SHS_NVS_KEY_Z3_Y1, shs_zone3_y1);
     nvs_set_i16(h, SHS_NVS_KEY_Z3_X2, shs_zone3_x2);
     nvs_set_i16(h, SHS_NVS_KEY_Z3_Y2, shs_zone3_y2);
+    nvs_set_u8(h, SHS_NVS_KEY_Z3_TYPE, shs_zone3_type);
+    /* Zone 4 */
+    nvs_set_u8(h, SHS_NVS_KEY_Z4_EN, shs_zone4_enabled ? 1 : 0);
+    nvs_set_i16(h, SHS_NVS_KEY_Z4_X1, shs_zone4_x1);
+    nvs_set_i16(h, SHS_NVS_KEY_Z4_Y1, shs_zone4_y1);
+    nvs_set_i16(h, SHS_NVS_KEY_Z4_X2, shs_zone4_x2);
+    nvs_set_i16(h, SHS_NVS_KEY_Z4_Y2, shs_zone4_y2);
+    nvs_set_u8(h, SHS_NVS_KEY_Z4_TYPE, shs_zone4_type);
+    /* Zone 5 */
+    nvs_set_u8(h, SHS_NVS_KEY_Z5_EN, shs_zone5_enabled ? 1 : 0);
+    nvs_set_i16(h, SHS_NVS_KEY_Z5_X1, shs_zone5_x1);
+    nvs_set_i16(h, SHS_NVS_KEY_Z5_Y1, shs_zone5_y1);
+    nvs_set_i16(h, SHS_NVS_KEY_Z5_X2, shs_zone5_x2);
+    nvs_set_i16(h, SHS_NVS_KEY_Z5_Y2, shs_zone5_y2);
+    nvs_set_u8(h, SHS_NVS_KEY_Z5_TYPE, shs_zone5_type);
 
     nvs_commit(h);
     nvs_close(h);
@@ -357,6 +416,8 @@ static void shs_zone_cfg_load_from_nvs(void) {
         shs_zone1_x2 = i16tmp;
     if (nvs_get_i16(h, SHS_NVS_KEY_Z1_Y2, &i16tmp) == ESP_OK)
         shs_zone1_y2 = i16tmp;
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z1_TYPE, &u8tmp) == ESP_OK)
+        shs_zone1_type = u8tmp;
 
     /* Zone 2 */
     if (nvs_get_u8(h, SHS_NVS_KEY_Z2_EN, &u8tmp) == ESP_OK)
@@ -369,6 +430,8 @@ static void shs_zone_cfg_load_from_nvs(void) {
         shs_zone2_x2 = i16tmp;
     if (nvs_get_i16(h, SHS_NVS_KEY_Z2_Y2, &i16tmp) == ESP_OK)
         shs_zone2_y2 = i16tmp;
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z2_TYPE, &u8tmp) == ESP_OK)
+        shs_zone2_type = u8tmp;
 
     /* Zone 3 */
     if (nvs_get_u8(h, SHS_NVS_KEY_Z3_EN, &u8tmp) == ESP_OK)
@@ -381,11 +444,42 @@ static void shs_zone_cfg_load_from_nvs(void) {
         shs_zone3_x2 = i16tmp;
     if (nvs_get_i16(h, SHS_NVS_KEY_Z3_Y2, &i16tmp) == ESP_OK)
         shs_zone3_y2 = i16tmp;
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z3_TYPE, &u8tmp) == ESP_OK)
+        shs_zone3_type = u8tmp;
+
+    /* Zone 4 */
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z4_EN, &u8tmp) == ESP_OK)
+        shs_zone4_enabled = (u8tmp != 0);
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z4_X1, &i16tmp) == ESP_OK)
+        shs_zone4_x1 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z4_Y1, &i16tmp) == ESP_OK)
+        shs_zone4_y1 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z4_X2, &i16tmp) == ESP_OK)
+        shs_zone4_x2 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z4_Y2, &i16tmp) == ESP_OK)
+        shs_zone4_y2 = i16tmp;
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z4_TYPE, &u8tmp) == ESP_OK)
+        shs_zone4_type = u8tmp;
+
+    /* Zone 5 */
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z5_EN, &u8tmp) == ESP_OK)
+        shs_zone5_enabled = (u8tmp != 0);
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z5_X1, &i16tmp) == ESP_OK)
+        shs_zone5_x1 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z5_Y1, &i16tmp) == ESP_OK)
+        shs_zone5_y1 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z5_X2, &i16tmp) == ESP_OK)
+        shs_zone5_x2 = i16tmp;
+    if (nvs_get_i16(h, SHS_NVS_KEY_Z5_Y2, &i16tmp) == ESP_OK)
+        shs_zone5_y2 = i16tmp;
+    if (nvs_get_u8(h, SHS_NVS_KEY_Z5_TYPE, &u8tmp) == ESP_OK)
+        shs_zone5_type = u8tmp;
 
     nvs_close(h);
 
-    ESP_LOGI(SHS_TAG, "Zone config loaded: type=%d, z1=%d, z2=%d, z3=%d",
-             shs_zone_type, shs_zone1_enabled, shs_zone2_enabled, shs_zone3_enabled);
+    ESP_LOGI(SHS_TAG, "Zone config loaded: type=%d, z1=%d, z2=%d, z3=%d, z4=%d, z5=%d",
+             shs_zone_type, shs_zone1_enabled, shs_zone2_enabled, shs_zone3_enabled,
+             shs_zone4_enabled, shs_zone5_enabled);
 }
 
 /* Forward declaration for zone config apply */
@@ -419,35 +513,52 @@ static void shs_zone_cfg_check_pending(void) {
 }
 
 static void shs_zone_cfg_apply_to_sensor(void) {
-    ESP_LOGI(SHS_TAG, "Applying zone config to LD2450: type=%d, z1=%d, z2=%d, z3=%d",
-             shs_zone_type, shs_zone1_enabled, shs_zone2_enabled, shs_zone3_enabled);
+    ESP_LOGI(SHS_TAG, "Applying zone config to LD2450: type=%d, z1=%d, z2=%d, z3=%d, z4=%d, z5=%d",
+             shs_zone_type, shs_zone1_enabled, shs_zone2_enabled, shs_zone3_enabled,
+             shs_zone4_enabled, shs_zone5_enabled);
 
-    /* Set zone type (disabled/detection/filter) */
+    /* Set global zone type (disabled/detection/filter) */
     ld2450_set_zone_type((ld2450_zone_type_t)shs_zone_type);
 
     /* Configure each zone */
     if (shs_zone1_enabled) {
         ld2450_set_zone(0, shs_zone1_x1, shs_zone1_y1, shs_zone1_x2, shs_zone1_y2);
-        ESP_LOGI(SHS_TAG, "Zone 1: (%d,%d) to (%d,%d)",
-                 shs_zone1_x1, shs_zone1_y1, shs_zone1_x2, shs_zone1_y2);
+        ESP_LOGI(SHS_TAG, "Zone 1: (%d,%d) to (%d,%d) type=%d",
+                 shs_zone1_x1, shs_zone1_y1, shs_zone1_x2, shs_zone1_y2, shs_zone1_type);
     } else {
         ld2450_clear_zone(0);
     }
 
     if (shs_zone2_enabled) {
         ld2450_set_zone(1, shs_zone2_x1, shs_zone2_y1, shs_zone2_x2, shs_zone2_y2);
-        ESP_LOGI(SHS_TAG, "Zone 2: (%d,%d) to (%d,%d)",
-                 shs_zone2_x1, shs_zone2_y1, shs_zone2_x2, shs_zone2_y2);
+        ESP_LOGI(SHS_TAG, "Zone 2: (%d,%d) to (%d,%d) type=%d",
+                 shs_zone2_x1, shs_zone2_y1, shs_zone2_x2, shs_zone2_y2, shs_zone2_type);
     } else {
         ld2450_clear_zone(1);
     }
 
     if (shs_zone3_enabled) {
         ld2450_set_zone(2, shs_zone3_x1, shs_zone3_y1, shs_zone3_x2, shs_zone3_y2);
-        ESP_LOGI(SHS_TAG, "Zone 3: (%d,%d) to (%d,%d)",
-                 shs_zone3_x1, shs_zone3_y1, shs_zone3_x2, shs_zone3_y2);
+        ESP_LOGI(SHS_TAG, "Zone 3: (%d,%d) to (%d,%d) type=%d",
+                 shs_zone3_x1, shs_zone3_y1, shs_zone3_x2, shs_zone3_y2, shs_zone3_type);
     } else {
         ld2450_clear_zone(2);
+    }
+
+    if (shs_zone4_enabled) {
+        ld2450_set_zone(3, shs_zone4_x1, shs_zone4_y1, shs_zone4_x2, shs_zone4_y2);
+        ESP_LOGI(SHS_TAG, "Zone 4: (%d,%d) to (%d,%d) type=%d",
+                 shs_zone4_x1, shs_zone4_y1, shs_zone4_x2, shs_zone4_y2, shs_zone4_type);
+    } else {
+        ld2450_clear_zone(3);
+    }
+
+    if (shs_zone5_enabled) {
+        ld2450_set_zone(4, shs_zone5_x1, shs_zone5_y1, shs_zone5_x2, shs_zone5_y2);
+        ESP_LOGI(SHS_TAG, "Zone 5: (%d,%d) to (%d,%d) type=%d",
+                 shs_zone5_x1, shs_zone5_y1, shs_zone5_x2, shs_zone5_y2, shs_zone5_type);
+    } else {
+        ld2450_clear_zone(4);
     }
 
     /* Apply zones to sensor (sends command to LD2450) */
@@ -938,6 +1049,38 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
         shs_zb_report_analog_attr(SHS_EP_ZONE3_TARGETS);
         ESP_LOGI(SHS_TAG, "Zone 3 targets: %d", shs_zone3_targets);
     }
+
+    /* Update zone 4 occupancy */
+    if (zones[3].enabled && shs_zone4_occupied != zones[3].occupied) {
+        shs_zone4_occupied = zones[3].occupied;
+        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE4, zones[3].occupied);
+        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE4);
+        ESP_LOGI(SHS_TAG, "Zone 4: %s", zones[3].occupied ? "OCCUPIED" : "CLEAR");
+    }
+
+    /* Update zone 4 target count */
+    if (zones[3].enabled && shs_zone4_targets != zones[3].target_count) {
+        shs_zone4_targets = zones[3].target_count;
+        shs_zb_set_analog_value(SHS_EP_ZONE4_TARGETS, (float)shs_zone4_targets);
+        shs_zb_report_analog_attr(SHS_EP_ZONE4_TARGETS);
+        ESP_LOGI(SHS_TAG, "Zone 4 targets: %d", shs_zone4_targets);
+    }
+
+    /* Update zone 5 occupancy */
+    if (zones[4].enabled && shs_zone5_occupied != zones[4].occupied) {
+        shs_zone5_occupied = zones[4].occupied;
+        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE5, zones[4].occupied);
+        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE5);
+        ESP_LOGI(SHS_TAG, "Zone 5: %s", zones[4].occupied ? "OCCUPIED" : "CLEAR");
+    }
+
+    /* Update zone 5 target count */
+    if (zones[4].enabled && shs_zone5_targets != zones[4].target_count) {
+        shs_zone5_targets = zones[4].target_count;
+        shs_zb_set_analog_value(SHS_EP_ZONE5_TARGETS, (float)shs_zone5_targets);
+        shs_zb_report_analog_attr(SHS_EP_ZONE5_TARGETS);
+        ESP_LOGI(SHS_TAG, "Zone 5 targets: %d", shs_zone5_targets);
+    }
 }
 
 /**
@@ -1426,6 +1569,11 @@ static esp_err_t shs_zb_attribute_handler(const esp_zb_zcl_set_attr_value_messag
                 ESP_LOGI(SHS_TAG, "Zone 1 Y2 = %d", shs_zone1_y2);
                 shs_zone_cfg_schedule_apply();
                 return ESP_OK;
+            case SHS_ATTR_ZONE1_TYPE_CFG:
+                shs_zone1_type = v8;
+                ESP_LOGI(SHS_TAG, "Zone 1 Type = %d", shs_zone1_type);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
 
             /* Zone 2 configuration */
             case SHS_ATTR_ZONE2_ENABLED:
@@ -1453,6 +1601,11 @@ static esp_err_t shs_zb_attribute_handler(const esp_zb_zcl_set_attr_value_messag
                 ESP_LOGI(SHS_TAG, "Zone 2 Y2 = %d", shs_zone2_y2);
                 shs_zone_cfg_schedule_apply();
                 return ESP_OK;
+            case SHS_ATTR_ZONE2_TYPE_CFG:
+                shs_zone2_type = v8;
+                ESP_LOGI(SHS_TAG, "Zone 2 Type = %d", shs_zone2_type);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
 
             /* Zone 3 configuration */
             case SHS_ATTR_ZONE3_ENABLED:
@@ -1478,6 +1631,75 @@ static esp_err_t shs_zb_attribute_handler(const esp_zb_zcl_set_attr_value_messag
             case SHS_ATTR_ZONE3_Y2_CFG:
                 shs_zone3_y2 = v16s;
                 ESP_LOGI(SHS_TAG, "Zone 3 Y2 = %d", shs_zone3_y2);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE3_TYPE_CFG:
+                shs_zone3_type = v8;
+                ESP_LOGI(SHS_TAG, "Zone 3 Type = %d", shs_zone3_type);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+
+            /* Zone 4 configuration */
+            case SHS_ATTR_ZONE4_ENABLED:
+                shs_zone4_enabled = (v8 != 0);
+                ESP_LOGI(SHS_TAG, "Zone 4 Enabled = %d", shs_zone4_enabled);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE4_X1_CFG:
+                shs_zone4_x1 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 4 X1 = %d", shs_zone4_x1);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE4_Y1_CFG:
+                shs_zone4_y1 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 4 Y1 = %d", shs_zone4_y1);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE4_X2_CFG:
+                shs_zone4_x2 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 4 X2 = %d", shs_zone4_x2);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE4_Y2_CFG:
+                shs_zone4_y2 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 4 Y2 = %d", shs_zone4_y2);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE4_TYPE_CFG:
+                shs_zone4_type = v8;
+                ESP_LOGI(SHS_TAG, "Zone 4 Type = %d", shs_zone4_type);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+
+            /* Zone 5 configuration */
+            case SHS_ATTR_ZONE5_ENABLED:
+                shs_zone5_enabled = (v8 != 0);
+                ESP_LOGI(SHS_TAG, "Zone 5 Enabled = %d", shs_zone5_enabled);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE5_X1_CFG:
+                shs_zone5_x1 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 5 X1 = %d", shs_zone5_x1);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE5_Y1_CFG:
+                shs_zone5_y1 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 5 Y1 = %d", shs_zone5_y1);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE5_X2_CFG:
+                shs_zone5_x2 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 5 X2 = %d", shs_zone5_x2);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE5_Y2_CFG:
+                shs_zone5_y2 = v16s;
+                ESP_LOGI(SHS_TAG, "Zone 5 Y2 = %d", shs_zone5_y2);
+                shs_zone_cfg_schedule_apply();
+                return ESP_OK;
+            case SHS_ATTR_ZONE5_TYPE_CFG:
+                shs_zone5_type = v8;
+                ESP_LOGI(SHS_TAG, "Zone 5 Type = %d", shs_zone5_type);
                 shs_zone_cfg_schedule_apply();
                 return ESP_OK;
 
@@ -2023,6 +2245,8 @@ static void shs_zigbee_task(void *pvParameters) {
             ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone1_y2);
         esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE1_TARGETS_CFG,
             ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &shs_zone1_targets);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE1_TYPE_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone1_type);
 
         /* Zone 2 */
         esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE2_ENABLED,
@@ -2037,6 +2261,8 @@ static void shs_zigbee_task(void *pvParameters) {
             ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone2_y2);
         esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE2_TARGETS_CFG,
             ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &shs_zone2_targets);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE2_TYPE_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone2_type);
 
         /* Zone 3 */
         esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE3_ENABLED,
@@ -2051,6 +2277,40 @@ static void shs_zigbee_task(void *pvParameters) {
             ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone3_y2);
         esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE3_TARGETS_CFG,
             ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &shs_zone3_targets);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE3_TYPE_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone3_type);
+
+        /* Zone 4 */
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_ENABLED,
+            ESP_ZB_ZCL_ATTR_TYPE_BOOL, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_enabled);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_X1_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_x1);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_Y1_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_y1);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_X2_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_x2);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_Y2_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_y2);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_TARGETS_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &shs_zone4_targets);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE4_TYPE_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone4_type);
+
+        /* Zone 5 */
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_ENABLED,
+            ESP_ZB_ZCL_ATTR_TYPE_BOOL, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_enabled);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_X1_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_x1);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_Y1_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_y1);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_X2_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_x2);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_Y2_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_S16, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_y2);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_TARGETS_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING, &shs_zone5_targets);
+        esp_zb_custom_cluster_add_custom_attr(cfg_cl, SHS_ATTR_ZONE5_TYPE_CFG,
+            ESP_ZB_ZCL_ATTR_TYPE_U8, ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE, &shs_zone5_type);
 
         esp_zb_cluster_list_add_custom_cluster(cl, cfg_cl, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
@@ -2222,6 +2482,60 @@ static void shs_zigbee_task(void *pvParameters) {
         };
         esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
         esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_LD2450_ZONE3, &info);
+    }
+
+    /* ========== EP22: Zone 4 Occupancy (genBinaryInput) ========== */
+    {
+        esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
+
+        /* Basic cluster */
+        esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(NULL);
+        esp_zb_cluster_list_add_basic_cluster(cl, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        /* genBinaryInput for zone occupancy - present_value is uint8_t */
+        esp_zb_binary_input_cluster_cfg_t binary_cfg = {
+            .out_of_service = false,
+            .present_value = shs_zone4_occupied ? 1 : 0,
+            .status_flags = 0,
+        };
+        esp_zb_attribute_list_t *binary_input = esp_zb_binary_input_cluster_create(&binary_cfg);
+        esp_zb_cluster_list_add_binary_input_cluster(cl, binary_input, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        esp_zb_endpoint_config_t ep_cfg = {
+            .endpoint = SHS_EP_LD2450_ZONE4,
+            .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+            .app_device_id = ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID,
+            .app_device_version = 0
+        };
+        esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
+        esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_LD2450_ZONE4, &info);
+    }
+
+    /* ========== EP23: Zone 5 Occupancy (genBinaryInput) ========== */
+    {
+        esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
+
+        /* Basic cluster */
+        esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(NULL);
+        esp_zb_cluster_list_add_basic_cluster(cl, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        /* genBinaryInput for zone occupancy - present_value is uint8_t */
+        esp_zb_binary_input_cluster_cfg_t binary_cfg = {
+            .out_of_service = false,
+            .present_value = shs_zone5_occupied ? 1 : 0,
+            .status_flags = 0,
+        };
+        esp_zb_attribute_list_t *binary_input = esp_zb_binary_input_cluster_create(&binary_cfg);
+        esp_zb_cluster_list_add_binary_input_cluster(cl, binary_input, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        esp_zb_endpoint_config_t ep_cfg = {
+            .endpoint = SHS_EP_LD2450_ZONE5,
+            .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+            .app_device_id = ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID,
+            .app_device_version = 0
+        };
+        esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
+        esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_LD2450_ZONE5, &info);
     }
 
     /* ========== EP8-16: LD2450 Position Data (genAnalogInput) - Only Active When Position Reporting Enabled ========== */
@@ -2435,6 +2749,60 @@ static void shs_zigbee_task(void *pvParameters) {
         };
         esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
         esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_ZONE3_TARGETS, &info);
+    }
+
+    /* ========== EP24: Zone 4 Target Count (genAnalogInput) ========== */
+    {
+        esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
+
+        /* Basic cluster */
+        esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(NULL);
+        esp_zb_cluster_list_add_basic_cluster(cl, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        /* genAnalogInput for zone 4 target count (0-3) */
+        esp_zb_analog_input_cluster_cfg_t analog_cfg = {
+            .out_of_service = false,
+            .present_value = (float)shs_zone4_targets,
+            .status_flags = 0,
+        };
+        esp_zb_attribute_list_t *analog_input = esp_zb_analog_input_cluster_create(&analog_cfg);
+        esp_zb_cluster_list_add_analog_input_cluster(cl, analog_input, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        esp_zb_endpoint_config_t ep_cfg = {
+            .endpoint = SHS_EP_ZONE4_TARGETS,
+            .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+            .app_device_id = ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID,
+            .app_device_version = 0
+        };
+        esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
+        esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_ZONE4_TARGETS, &info);
+    }
+
+    /* ========== EP25: Zone 5 Target Count (genAnalogInput) ========== */
+    {
+        esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
+
+        /* Basic cluster */
+        esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(NULL);
+        esp_zb_cluster_list_add_basic_cluster(cl, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        /* genAnalogInput for zone 5 target count (0-3) */
+        esp_zb_analog_input_cluster_cfg_t analog_cfg = {
+            .out_of_service = false,
+            .present_value = (float)shs_zone5_targets,
+            .status_flags = 0,
+        };
+        esp_zb_attribute_list_t *analog_input = esp_zb_analog_input_cluster_create(&analog_cfg);
+        esp_zb_cluster_list_add_analog_input_cluster(cl, analog_input, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+        esp_zb_endpoint_config_t ep_cfg = {
+            .endpoint = SHS_EP_ZONE5_TARGETS,
+            .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
+            .app_device_id = ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID,
+            .app_device_version = 0
+        };
+        esp_zb_ep_list_add_ep(dev_ep_list, cl, ep_cfg);
+        esp_zcl_utility_add_ep_basic_manufacturer_info(dev_ep_list, SHS_EP_ZONE5_TARGETS, &info);
     }
 
     /* Register device and start */

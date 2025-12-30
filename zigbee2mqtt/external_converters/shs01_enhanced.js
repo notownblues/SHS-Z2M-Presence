@@ -51,6 +51,10 @@ const EP_LD2410C_STATIC = 18;
 const EP_ZONE1_TARGETS = 19;
 const EP_ZONE2_TARGETS = 20;
 const EP_ZONE3_TARGETS = 21;
+const EP_LD2450_ZONE4 = 22;
+const EP_LD2450_ZONE5 = 23;
+const EP_ZONE4_TARGETS = 24;
+const EP_ZONE5_TARGETS = 25;
 
 // Config cluster (0xFDCD on EP1)
 const CLUSTER_CONFIG = 0xFDCD;
@@ -63,7 +67,6 @@ const ATTR_STATIC_MAX_GATE = 0x0006;
 const ATTR_POSITION_REPORTING = 0x0008;
 
 // Zone configuration attributes (on Config cluster 0xFDCD)
-const ATTR_ZONE_TYPE_CFG = 0x0020;
 const ATTR_ZONE1_ENABLED = 0x0021;
 const ATTR_ZONE1_X1_CFG = 0x0022;
 const ATTR_ZONE1_Y1_CFG = 0x0023;
@@ -83,6 +86,30 @@ const ATTR_ZONE3_X2_CFG = 0x0043;
 const ATTR_ZONE3_Y2_CFG = 0x0044;
 const ATTR_ZONE3_TARGETS_CFG = 0x0045;  // uint8, read-only from firmware
 
+// Per-zone type attributes (0=off, 1=detection, 2=filter, 3=interference)
+const ATTR_ZONE_TYPE_CFG = 0x0020;      // global zone type
+const ATTR_ZONE1_TYPE_CFG = 0x0027;
+const ATTR_ZONE2_TYPE_CFG = 0x0036;
+const ATTR_ZONE3_TYPE_CFG = 0x0046;
+const ATTR_ZONE4_TYPE_CFG = 0x0056;
+const ATTR_ZONE5_TYPE_CFG = 0x0066;
+
+// Zone 4 configuration attributes
+const ATTR_ZONE4_ENABLED = 0x0050;
+const ATTR_ZONE4_X1_CFG = 0x0051;
+const ATTR_ZONE4_Y1_CFG = 0x0052;
+const ATTR_ZONE4_X2_CFG = 0x0053;
+const ATTR_ZONE4_Y2_CFG = 0x0054;
+const ATTR_ZONE4_TARGETS_CFG = 0x0055;  // uint8, read-only from firmware
+
+// Zone 5 configuration attributes
+const ATTR_ZONE5_ENABLED = 0x0060;
+const ATTR_ZONE5_X1_CFG = 0x0061;
+const ATTR_ZONE5_Y1_CFG = 0x0062;
+const ATTR_ZONE5_X2_CFG = 0x0063;
+const ATTR_ZONE5_Y2_CFG = 0x0064;
+const ATTR_ZONE5_TARGETS_CFG = 0x0065;  // uint8, read-only from firmware
+
 // Manufacturer-specific attributes on Occupancy cluster (EP2) - minimal set
 const ATTR_MS_MOVING = 0xF001;
 const ATTR_MS_STATIC = 0xF002;
@@ -92,6 +119,8 @@ let zoneConfig = {
     zone1: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 },
     zone2: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 },
     zone3: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 },
+    zone4: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 },
+    zone5: { enabled: false, x1: 0, y1: 0, x2: 0, y2: 0 },
 };
 
 // Helper: check if point is in zone
@@ -106,7 +135,7 @@ function pointInZone(x, y, zone) {
 
 // Helper: count targets in each zone
 function calculateZoneTargets(meta) {
-    const result = { zone_1_targets: 0, zone_2_targets: 0, zone_3_targets: 0 };
+    const result = { zone_1_targets: 0, zone_2_targets: 0, zone_3_targets: 0, zone_4_targets: 0, zone_5_targets: 0 };
     const state = meta.state || {};
 
     // Get target positions from state
@@ -124,14 +153,18 @@ function calculateZoneTargets(meta) {
         const inZone1 = pointInZone(target.x, target.y, zoneConfig.zone1);
         const inZone2 = pointInZone(target.x, target.y, zoneConfig.zone2);
         const inZone3 = pointInZone(target.x, target.y, zoneConfig.zone3);
+        const inZone4 = pointInZone(target.x, target.y, zoneConfig.zone4);
+        const inZone5 = pointInZone(target.x, target.y, zoneConfig.zone5);
 
         if (inZone1) result.zone_1_targets++;
         if (inZone2) result.zone_2_targets++;
         if (inZone3) result.zone_3_targets++;
+        if (inZone4) result.zone_4_targets++;
+        if (inZone5) result.zone_5_targets++;
 
         // Debug log for first target
-        if (i === 0 && (inZone1 || inZone2 || inZone3)) {
-            console.log(`SHS01: Target ${i+1} at (${target.x}, ${target.y}) in zones: Z1=${inZone1}, Z2=${inZone2}, Z3=${inZone3}`);
+        if (i === 0 && (inZone1 || inZone2 || inZone3 || inZone4 || inZone5)) {
+            console.log(`SHS01: Target ${i+1} at (${target.x}, ${target.y}) in zones: Z1=${inZone1}, Z2=${inZone2}, Z3=${inZone3}, Z4=${inZone4}, Z5=${inZone5}`);
         }
     }
 
@@ -178,10 +211,12 @@ const definition = {
                         case EP_T3_X: result.target3_x = Math.round(value) - 3000; break;
                         case EP_T3_Y: result.target3_y = Math.round(value); break;
                         case EP_T3_DIST: result.target3_distance = Math.round(value); break;
-                        // EP19/20/21: Zone target counts (from firmware)
+                        // EP19/20/21/24/25: Zone target counts (from firmware)
                         case EP_ZONE1_TARGETS: result.zone_1_targets = Math.round(value); break;
                         case EP_ZONE2_TARGETS: result.zone_2_targets = Math.round(value); break;
                         case EP_ZONE3_TARGETS: result.zone_3_targets = Math.round(value); break;
+                        case EP_ZONE4_TARGETS: result.zone_4_targets = Math.round(value); break;
+                        case EP_ZONE5_TARGETS: result.zone_5_targets = Math.round(value); break;
                     }
                 }
 
@@ -198,7 +233,7 @@ const definition = {
                 const pv = msg.data.presentValue;
                 const value = pv === 1 || pv === true || pv === '1' || pv === 'true';
 
-                // EP5/6/7: Zone occupancy (LD2450 only)
+                // EP5/6/7/22/23: Zone occupancy (LD2450 only)
                 if (ep === EP_LD2450_ZONE1 && msg.data.hasOwnProperty('presentValue')) {
                     result.zone1_occupied = value;
                 }
@@ -207,6 +242,12 @@ const definition = {
                 }
                 if (ep === EP_LD2450_ZONE3 && msg.data.hasOwnProperty('presentValue')) {
                     result.zone3_occupied = value;
+                }
+                if (ep === EP_LD2450_ZONE4 && msg.data.hasOwnProperty('presentValue')) {
+                    result.zone4_occupied = value;
+                }
+                if (ep === EP_LD2450_ZONE5 && msg.data.hasOwnProperty('presentValue')) {
+                    result.zone5_occupied = value;
                 }
 
                 // NOTE: LD2410C uses ONLY msOccupancySensing on EP2 (like backup)
@@ -292,6 +333,14 @@ const definition = {
                 if (msg.data.hasOwnProperty(ATTR_ZONE3_TARGETS_CFG)) {
                     result.zone_3_targets = msg.data[ATTR_ZONE3_TARGETS_CFG];
                     console.log(`SHS01: Zone 3 targets = ${result.zone_3_targets}`);
+                }
+                if (msg.data.hasOwnProperty(ATTR_ZONE4_TARGETS_CFG)) {
+                    result.zone_4_targets = msg.data[ATTR_ZONE4_TARGETS_CFG];
+                    console.log(`SHS01: Zone 4 targets = ${result.zone_4_targets}`);
+                }
+                if (msg.data.hasOwnProperty(ATTR_ZONE5_TARGETS_CFG)) {
+                    result.zone_5_targets = msg.data[ATTR_ZONE5_TARGETS_CFG];
+                    console.log(`SHS01: Zone 5 targets = ${result.zone_5_targets}`);
                 }
                 // Debug: log all received config cluster attributes
                 if (Object.keys(result).length === 0) {
@@ -396,30 +445,57 @@ const definition = {
                     throw new Error(`Endpoint ${EP_LIGHT} not found`);
                 }
 
-                // Attribute lookup with data types (0x20 = uint8, 0x10 = bool, 0x29 = int16)
+                // Attribute lookup with data types (0x10 = bool, 0x20 = uint8, 0x29 = int16)
                 const zoneAttrLookup = {
-                    'zone_type': {id: ATTR_ZONE_TYPE_CFG, type: 0x20},           // uint8
+                    'zone_type': {id: ATTR_ZONE_TYPE_CFG, type: 0x20, isZoneType: true},      // uint8 (global)
+                    'zone1_type': {id: ATTR_ZONE1_TYPE_CFG, type: 0x20, isZoneType: true},    // uint8 (per-zone)
                     'zone1_enabled': {id: ATTR_ZONE1_ENABLED, type: 0x10},       // bool
                     'zone1_x1': {id: ATTR_ZONE1_X1_CFG, type: 0x29},             // int16
                     'zone1_y1': {id: ATTR_ZONE1_Y1_CFG, type: 0x29},             // int16
                     'zone1_x2': {id: ATTR_ZONE1_X2_CFG, type: 0x29},             // int16
                     'zone1_y2': {id: ATTR_ZONE1_Y2_CFG, type: 0x29},             // int16
+                    'zone2_type': {id: ATTR_ZONE2_TYPE_CFG, type: 0x20, isZoneType: true},    // uint8 (per-zone)
                     'zone2_enabled': {id: ATTR_ZONE2_ENABLED, type: 0x10},       // bool
                     'zone2_x1': {id: ATTR_ZONE2_X1_CFG, type: 0x29},             // int16
                     'zone2_y1': {id: ATTR_ZONE2_Y1_CFG, type: 0x29},             // int16
                     'zone2_x2': {id: ATTR_ZONE2_X2_CFG, type: 0x29},             // int16
                     'zone2_y2': {id: ATTR_ZONE2_Y2_CFG, type: 0x29},             // int16
+                    'zone3_type': {id: ATTR_ZONE3_TYPE_CFG, type: 0x20, isZoneType: true},    // uint8 (per-zone)
                     'zone3_enabled': {id: ATTR_ZONE3_ENABLED, type: 0x10},       // bool
                     'zone3_x1': {id: ATTR_ZONE3_X1_CFG, type: 0x29},             // int16
                     'zone3_y1': {id: ATTR_ZONE3_Y1_CFG, type: 0x29},             // int16
                     'zone3_x2': {id: ATTR_ZONE3_X2_CFG, type: 0x29},             // int16
                     'zone3_y2': {id: ATTR_ZONE3_Y2_CFG, type: 0x29},             // int16
+                    'zone4_type': {id: ATTR_ZONE4_TYPE_CFG, type: 0x20, isZoneType: true},    // uint8 (per-zone)
+                    'zone4_enabled': {id: ATTR_ZONE4_ENABLED, type: 0x10},       // bool
+                    'zone4_x1': {id: ATTR_ZONE4_X1_CFG, type: 0x29},             // int16
+                    'zone4_y1': {id: ATTR_ZONE4_Y1_CFG, type: 0x29},             // int16
+                    'zone4_x2': {id: ATTR_ZONE4_X2_CFG, type: 0x29},             // int16
+                    'zone4_y2': {id: ATTR_ZONE4_Y2_CFG, type: 0x29},             // int16
+                    'zone5_type': {id: ATTR_ZONE5_TYPE_CFG, type: 0x20, isZoneType: true},    // uint8 (per-zone)
+                    'zone5_enabled': {id: ATTR_ZONE5_ENABLED, type: 0x10},       // bool
+                    'zone5_x1': {id: ATTR_ZONE5_X1_CFG, type: 0x29},             // int16
+                    'zone5_y1': {id: ATTR_ZONE5_Y1_CFG, type: 0x29},             // int16
+                    'zone5_x2': {id: ATTR_ZONE5_X2_CFG, type: 0x29},             // int16
+                    'zone5_y2': {id: ATTR_ZONE5_Y2_CFG, type: 0x29},             // int16
+                };
+
+                // Zone type string to number mapping
+                const zoneTypeMapping = {
+                    'off': 0,
+                    'detection': 1,
+                    'filter': 2,
+                    'interference': 3,
                 };
 
                 // Write each attribute from the zone_config object
                 for (const [attrKey, attrDef] of Object.entries(zoneAttrLookup)) {
                     if (value.hasOwnProperty(attrKey)) {
                         let writeValue = value[attrKey];
+                        // Convert zone type string to number
+                        if (attrDef.isZoneType && typeof writeValue === 'string') {
+                            writeValue = zoneTypeMapping[writeValue] ?? 0;
+                        }
                         // Convert boolean to 0/1 for Zigbee
                         if (attrDef.type === 0x10) {
                             writeValue = writeValue ? 1 : 0;
@@ -449,6 +525,16 @@ const definition = {
                 if (value.zone3_y1 !== undefined) zoneConfig.zone3.y1 = value.zone3_y1;
                 if (value.zone3_x2 !== undefined) zoneConfig.zone3.x2 = value.zone3_x2;
                 if (value.zone3_y2 !== undefined) zoneConfig.zone3.y2 = value.zone3_y2;
+                if (value.zone4_enabled !== undefined) zoneConfig.zone4.enabled = value.zone4_enabled;
+                if (value.zone4_x1 !== undefined) zoneConfig.zone4.x1 = value.zone4_x1;
+                if (value.zone4_y1 !== undefined) zoneConfig.zone4.y1 = value.zone4_y1;
+                if (value.zone4_x2 !== undefined) zoneConfig.zone4.x2 = value.zone4_x2;
+                if (value.zone4_y2 !== undefined) zoneConfig.zone4.y2 = value.zone4_y2;
+                if (value.zone5_enabled !== undefined) zoneConfig.zone5.enabled = value.zone5_enabled;
+                if (value.zone5_x1 !== undefined) zoneConfig.zone5.x1 = value.zone5_x1;
+                if (value.zone5_y1 !== undefined) zoneConfig.zone5.y1 = value.zone5_y1;
+                if (value.zone5_x2 !== undefined) zoneConfig.zone5.x2 = value.zone5_x2;
+                if (value.zone5_y2 !== undefined) zoneConfig.zone5.y2 = value.zone5_y2;
 
                 console.log(`SHS01 ZONE: Config complete`);
                 return {state: {zone_config: value}};
@@ -480,13 +566,17 @@ const definition = {
             .withValueMax(3)
             .withDescription('Number of targets detected by LD2450 (0-3)'),
 
-        // EP5/6/7: Zone Occupancy
+        // EP5/6/7/22/23: Zone Occupancy
         e.binary('zone1_occupied', ea.STATE, true, false)
             .withDescription('Zone 1 occupancy'),
         e.binary('zone2_occupied', ea.STATE, true, false)
             .withDescription('Zone 2 occupancy'),
         e.binary('zone3_occupied', ea.STATE, true, false)
             .withDescription('Zone 3 occupancy'),
+        e.binary('zone4_occupied', ea.STATE, true, false)
+            .withDescription('Zone 4 occupancy'),
+        e.binary('zone5_occupied', ea.STATE, true, false)
+            .withDescription('Zone 5 occupancy'),
 
         // Zone Target Counts (derived from position data when position_reporting is ON)
         exposes.numeric('zone_1_targets', ea.STATE)
@@ -501,6 +591,14 @@ const definition = {
             .withValueMin(0)
             .withValueMax(3)
             .withDescription('Number of targets in Zone 3 (0-3)'),
+        exposes.numeric('zone_4_targets', ea.STATE)
+            .withValueMin(0)
+            .withValueMax(3)
+            .withDescription('Number of targets in Zone 4 (0-3)'),
+        exposes.numeric('zone_5_targets', ea.STATE)
+            .withValueMin(0)
+            .withValueMax(3)
+            .withDescription('Number of targets in Zone 5 (0-3)'),
 
         // EP8-16: Position Data (only active when position_reporting is ON)
         // Target 1
@@ -571,7 +669,6 @@ const definition = {
         // Zone configuration - composite object that accepts all zone settings at once
         exposes.composite('zone_config', 'zone_config', ea.SET)
             .withDescription('Zone configuration object from web configurator')
-            .withFeature(exposes.numeric('zone_type', ea.SET).withValueMin(0).withValueMax(2))
             .withFeature(exposes.binary('zone1_enabled', ea.SET, true, false))
             .withFeature(exposes.numeric('zone1_x1', ea.SET))
             .withFeature(exposes.numeric('zone1_y1', ea.SET))
@@ -586,7 +683,17 @@ const definition = {
             .withFeature(exposes.numeric('zone3_x1', ea.SET))
             .withFeature(exposes.numeric('zone3_y1', ea.SET))
             .withFeature(exposes.numeric('zone3_x2', ea.SET))
-            .withFeature(exposes.numeric('zone3_y2', ea.SET)),
+            .withFeature(exposes.numeric('zone3_y2', ea.SET))
+            .withFeature(exposes.binary('zone4_enabled', ea.SET, true, false))
+            .withFeature(exposes.numeric('zone4_x1', ea.SET))
+            .withFeature(exposes.numeric('zone4_y1', ea.SET))
+            .withFeature(exposes.numeric('zone4_x2', ea.SET))
+            .withFeature(exposes.numeric('zone4_y2', ea.SET))
+            .withFeature(exposes.binary('zone5_enabled', ea.SET, true, false))
+            .withFeature(exposes.numeric('zone5_x1', ea.SET))
+            .withFeature(exposes.numeric('zone5_y1', ea.SET))
+            .withFeature(exposes.numeric('zone5_x2', ea.SET))
+            .withFeature(exposes.numeric('zone5_y2', ea.SET)),
     ],
 
     meta: {
@@ -614,6 +721,10 @@ const definition = {
         const endpoint19 = device.getEndpoint(EP_ZONE1_TARGETS);
         const endpoint20 = device.getEndpoint(EP_ZONE2_TARGETS);
         const endpoint21 = device.getEndpoint(EP_ZONE3_TARGETS);
+        const endpoint22 = device.getEndpoint(EP_LD2450_ZONE4);
+        const endpoint23 = device.getEndpoint(EP_LD2450_ZONE5);
+        const endpoint24 = device.getEndpoint(EP_ZONE4_TARGETS);
+        const endpoint25 = device.getEndpoint(EP_ZONE5_TARGETS);
 
         // Position data endpoints (EP8-16)
         const positionEndpoints = [];
@@ -646,11 +757,15 @@ const definition = {
         await reporting.bind(endpoint5, coordinatorEndpoint, ['genBinaryInput']);
         await reporting.bind(endpoint6, coordinatorEndpoint, ['genBinaryInput']);
         await reporting.bind(endpoint7, coordinatorEndpoint, ['genBinaryInput']);
+        if (endpoint22) await reporting.bind(endpoint22, coordinatorEndpoint, ['genBinaryInput']);
+        if (endpoint23) await reporting.bind(endpoint23, coordinatorEndpoint, ['genBinaryInput']);
 
-        // Bind zone target count endpoints (EP19/20/21 - genAnalogInput)
+        // Bind zone target count endpoints (EP19/20/21/24/25 - genAnalogInput)
         if (endpoint19) await reporting.bind(endpoint19, coordinatorEndpoint, ['genAnalogInput']);
         if (endpoint20) await reporting.bind(endpoint20, coordinatorEndpoint, ['genAnalogInput']);
         if (endpoint21) await reporting.bind(endpoint21, coordinatorEndpoint, ['genAnalogInput']);
+        if (endpoint24) await reporting.bind(endpoint24, coordinatorEndpoint, ['genAnalogInput']);
+        if (endpoint25) await reporting.bind(endpoint25, coordinatorEndpoint, ['genAnalogInput']);
 
         // Bind position data endpoints (EP8-16) - genAnalogInput
         for (const ep of positionEndpoints) {
@@ -697,8 +812,8 @@ const definition = {
             reportableChange: 0.5,  // Report when count changes by 0.5 (i.e., any integer change)
         }]);
 
-        // Configure reporting for zone target counts (EP19/20/21)
-        for (const ep of [endpoint19, endpoint20, endpoint21]) {
+        // Configure reporting for zone target counts (EP19/20/21/24/25)
+        for (const ep of [endpoint19, endpoint20, endpoint21, endpoint24, endpoint25]) {
             if (ep) {
                 try {
                     await ep.configureReporting('genAnalogInput', [{
@@ -714,13 +829,15 @@ const definition = {
         }
 
         // Configure reporting for zone occupancy (only on change)
-        for (const ep of [endpoint5, endpoint6, endpoint7]) {
-            await ep.configureReporting('genBinaryInput', [{
-                attribute: 'presentValue',
-                minimumReportInterval: 1,
-                maximumReportInterval: 3600,
-                reportableChange: 1,  // Report on state change
-            }]);
+        for (const ep of [endpoint5, endpoint6, endpoint7, endpoint22, endpoint23]) {
+            if (ep) {
+                await ep.configureReporting('genBinaryInput', [{
+                    attribute: 'presentValue',
+                    minimumReportInterval: 1,
+                    maximumReportInterval: 3600,
+                    reportableChange: 1,  // Report on state change
+                }]);
+            }
         }
 
         // Configure reporting for LD2410C moving/static target states (EP17/18)
@@ -774,6 +891,8 @@ const definition = {
                 ATTR_ZONE1_TARGETS_CFG,
                 ATTR_ZONE2_TARGETS_CFG,
                 ATTR_ZONE3_TARGETS_CFG,
+                ATTR_ZONE4_TARGETS_CFG,
+                ATTR_ZONE5_TARGETS_CFG,
             ]);
         } catch (e) {
             console.log('Failed to read zone target counts:', e);
@@ -808,11 +927,13 @@ const definition = {
             console.log('Failed to read LD2450 target count:', e);
         }
 
-        // Read initial zone occupancy values (EP5/6/7)
+        // Read initial zone occupancy values (EP5/6/7/22/23)
         try {
             await endpoint5.read('genBinaryInput', ['presentValue']);
             await endpoint6.read('genBinaryInput', ['presentValue']);
             await endpoint7.read('genBinaryInput', ['presentValue']);
+            if (endpoint22) await endpoint22.read('genBinaryInput', ['presentValue']);
+            if (endpoint23) await endpoint23.read('genBinaryInput', ['presentValue']);
         } catch (e) {
             console.log('Failed to read zone occupancy:', e);
         }

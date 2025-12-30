@@ -27,6 +27,8 @@
 #define SHS_EP_LD2450_ZONE1             5   /* Zone 1 occupancy (genBinaryInput) */
 #define SHS_EP_LD2450_ZONE2             6   /* Zone 2 occupancy (genBinaryInput) */
 #define SHS_EP_LD2450_ZONE3             7   /* Zone 3 occupancy (genBinaryInput) */
+#define SHS_EP_LD2450_ZONE4             22  /* Zone 4 occupancy (genBinaryInput) */
+#define SHS_EP_LD2450_ZONE5             23  /* Zone 5 occupancy (genBinaryInput) */
 
 /* LD2450 position data endpoints (genAnalogInput) - OPTIONAL, only when config mode enabled */
 #define SHS_EP_LD2450_T1_X              8   /* Target 1 X coordinate in mm (genAnalogInput) */
@@ -47,6 +49,8 @@
 #define SHS_EP_ZONE1_TARGETS            19  /* Zone 1 target count (genAnalogInput) */
 #define SHS_EP_ZONE2_TARGETS            20  /* Zone 2 target count (genAnalogInput) */
 #define SHS_EP_ZONE3_TARGETS            21  /* Zone 3 target count (genAnalogInput) */
+#define SHS_EP_ZONE4_TARGETS            24  /* Zone 4 target count (genAnalogInput) */
+#define SHS_EP_ZONE5_TARGETS            25  /* Zone 5 target count (genAnalogInput) */
 
 /* Router config - mains powered, always listening, no polling needed */
 #define SHS_ZR_CONFIG()                                         \
@@ -97,25 +101,43 @@
 #define SHS_ATTR_MIN_STATIC_ENERGY      0x000A  /* uint16, 0-100 (minimum energy for static detection) */
 
 /* Zone configuration attributes (on Config cluster 0xFDCD) */
-#define SHS_ATTR_ZONE_TYPE_CFG          0x0020  /* uint8: 0=disabled, 1=detection, 2=filter */
+/* Zone type values: 0=off, 1=detection (include), 2=filter (exclude), 3=interference */
+#define SHS_ATTR_ZONE_TYPE_CFG          0x0020  /* uint8: global zone mode (0=disabled, 1=detection, 2=filter) */
 #define SHS_ATTR_ZONE1_ENABLED          0x0021  /* bool */
 #define SHS_ATTR_ZONE1_X1_CFG           0x0022  /* int16, mm */
 #define SHS_ATTR_ZONE1_Y1_CFG           0x0023  /* int16, mm */
 #define SHS_ATTR_ZONE1_X2_CFG           0x0024  /* int16, mm */
 #define SHS_ATTR_ZONE1_Y2_CFG           0x0025  /* int16, mm */
 #define SHS_ATTR_ZONE1_TARGETS_CFG      0x0026  /* uint8, 0-3, read-only */
+#define SHS_ATTR_ZONE1_TYPE_CFG         0x0027  /* uint8: per-zone type (0=off, 1=detection, 2=filter, 3=interference) */
 #define SHS_ATTR_ZONE2_ENABLED          0x0030  /* bool */
 #define SHS_ATTR_ZONE2_X1_CFG           0x0031  /* int16, mm */
 #define SHS_ATTR_ZONE2_Y1_CFG           0x0032  /* int16, mm */
 #define SHS_ATTR_ZONE2_X2_CFG           0x0033  /* int16, mm */
 #define SHS_ATTR_ZONE2_Y2_CFG           0x0034  /* int16, mm */
 #define SHS_ATTR_ZONE2_TARGETS_CFG      0x0035  /* uint8, 0-3, read-only */
+#define SHS_ATTR_ZONE2_TYPE_CFG         0x0036  /* uint8: per-zone type (0=off, 1=detection, 2=filter, 3=interference) */
 #define SHS_ATTR_ZONE3_ENABLED          0x0040  /* bool */
 #define SHS_ATTR_ZONE3_X1_CFG           0x0041  /* int16, mm */
 #define SHS_ATTR_ZONE3_Y1_CFG           0x0042  /* int16, mm */
 #define SHS_ATTR_ZONE3_X2_CFG           0x0043  /* int16, mm */
 #define SHS_ATTR_ZONE3_Y2_CFG           0x0044  /* int16, mm */
 #define SHS_ATTR_ZONE3_TARGETS_CFG      0x0045  /* uint8, 0-3, read-only */
+#define SHS_ATTR_ZONE3_TYPE_CFG         0x0046  /* uint8: per-zone type (0=off, 1=detection, 2=filter, 3=interference) */
+#define SHS_ATTR_ZONE4_ENABLED          0x0050  /* bool */
+#define SHS_ATTR_ZONE4_X1_CFG           0x0051  /* int16, mm */
+#define SHS_ATTR_ZONE4_Y1_CFG           0x0052  /* int16, mm */
+#define SHS_ATTR_ZONE4_X2_CFG           0x0053  /* int16, mm */
+#define SHS_ATTR_ZONE4_Y2_CFG           0x0054  /* int16, mm */
+#define SHS_ATTR_ZONE4_TARGETS_CFG      0x0055  /* uint8, 0-3, read-only */
+#define SHS_ATTR_ZONE4_TYPE_CFG         0x0056  /* uint8: per-zone type (0=off, 1=detection, 2=filter, 3=interference) */
+#define SHS_ATTR_ZONE5_ENABLED          0x0060  /* bool */
+#define SHS_ATTR_ZONE5_X1_CFG           0x0061  /* int16, mm */
+#define SHS_ATTR_ZONE5_Y1_CFG           0x0062  /* int16, mm */
+#define SHS_ATTR_ZONE5_X2_CFG           0x0063  /* int16, mm */
+#define SHS_ATTR_ZONE5_Y2_CFG           0x0064  /* int16, mm */
+#define SHS_ATTR_ZONE5_TARGETS_CFG      0x0065  /* uint8, 0-3, read-only */
+#define SHS_ATTR_ZONE5_TYPE_CFG         0x0066  /* uint8: per-zone type (0=off, 1=detection, 2=filter, 3=interference) */
 
 /* ============================================================================
  * OCCUPANCY CLUSTER CUSTOM ATTRIBUTES (on EP2)

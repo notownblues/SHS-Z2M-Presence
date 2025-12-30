@@ -193,6 +193,32 @@ static void update_zone_occupancy(void) {
                 }
             }
             break;
+
+        case LD2450_ZONE_INTERFERENCE:
+            // Similar to filter - targets in interference zones are noise/false positives
+            // Only targets OUTSIDE interference zones count as real occupancy
+            s_state.occupancy_detected = false;
+            for (int t = 0; t < LD2450_MAX_TARGETS; t++) {
+                if (!s_state.targets[t].active) continue;
+
+                bool in_any_zone = false;
+                int16_t x = s_state.targets[t].x;
+                int16_t y = s_state.targets[t].y;
+
+                for (int z = 0; z < LD2450_MAX_ZONES; z++) {
+                    if (s_state.zone_config.zones[z].enabled &&
+                        ld2450_point_in_zone(x, y, &s_state.zone_config.zones[z])) {
+                        in_any_zone = true;
+                        break;
+                    }
+                }
+
+                if (!in_any_zone) {
+                    s_state.occupancy_detected = true;
+                    break;
+                }
+            }
+            break;
     }
 
     // Check if any zone state changed (occupancy or target count)

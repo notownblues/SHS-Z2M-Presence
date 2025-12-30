@@ -41,7 +41,7 @@ extern "C" {
 #define LD2450_UART_BUF_SIZE        2048    /* Increased from 512 to reduce frame corruption */
 
 #define LD2450_MAX_TARGETS          3
-#define LD2450_MAX_ZONES            3
+#define LD2450_MAX_ZONES            5
 
 /* Coordinate system limits (millimeters) */
 #define LD2450_X_MIN                -3000
@@ -80,9 +80,10 @@ extern "C" {
  * @brief Zone operation modes
  */
 typedef enum {
-    LD2450_ZONE_DISABLED = 0,   // No zone filtering
-    LD2450_ZONE_DETECTION = 1,  // Only detect targets INSIDE zones (inclusion)
-    LD2450_ZONE_FILTER = 2      // Exclude targets INSIDE zones (exclusion)
+    LD2450_ZONE_DISABLED = 0,    // No zone filtering (off)
+    LD2450_ZONE_DETECTION = 1,   // Only detect targets INSIDE zones (inclusion)
+    LD2450_ZONE_FILTER = 2,      // Exclude targets INSIDE zones (exclusion)
+    LD2450_ZONE_INTERFERENCE = 3 // Interference zone - targets are noise/false positives
 } ld2450_zone_type_t;
 
 /* ============================================================================

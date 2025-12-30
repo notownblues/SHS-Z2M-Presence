@@ -96,9 +96,9 @@ static uint16_t shs_sens_st_0_10          = 5;  /* Matches threshold 50: 10 - (5
 /* Position reporting mode - controls X/Y coordinate reporting for zone configuration */
 static bool     shs_position_reporting    = false;
 
-/* Energy thresholds for false positive filtering */
-static uint16_t shs_min_moving_energy     = 40;   /* 0-100, minimum energy to accept moving detection (filters interference) */
-static uint16_t shs_min_static_energy     = 40;   /* 0-100, minimum energy to accept static detection (filters interference) */
+/* Energy thresholds for false positive filtering (DISABLED - see #if 0 block in callback) */
+static uint16_t shs_min_moving_energy     = 40;   /* 0-100, NOT ACTIVE - kept for Zigbee attribute compatibility */
+static uint16_t shs_min_static_energy     = 40;   /* 0-100, NOT ACTIVE - kept for Zigbee attribute compatibility */
 
 /* Firmware version (read from LD2410) */
 static char     shs_firmware_version[20]  = "Unknown";
@@ -117,6 +117,7 @@ static volatile bool shs_zb_ready = false;
 
 /* Network connectivity tracking for auto-recovery */
 static volatile bool shs_zb_connected = false;
+static volatile bool shs_zb_rejoin_pending = false;  /* Prevents multiple concurrent rejoin attempts */
 static uint32_t shs_last_successful_tx = 0;
 #define SHS_ZB_LOCK_TIMEOUT_MS     100    /* Timeout for Zigbee lock acquisition */
 #define SHS_ZB_CONNECTIVITY_CHECK_MS  60000  /* Check connectivity every 60s */
@@ -1247,8 +1248,9 @@ static void shs_apply_ld2410_config(void) {
     /* Set global sensitivity */
     ld2410_set_all_sensitivity(shs_moving_sens_0_100, shs_static_sens_0_100);
 
-    /* Block gate 0 (0-75cm) to avoid false triggers from sensor housing/mounting */
-    ld2410_set_gate_sensitivity(0, 0, 0);
+    /* DISABLED: Gate 0 blocking - testing detection speed without this filter
+     * Uncomment if false positives occur from sensor housing/mounting reflections */
+    // ld2410_set_gate_sensitivity(0, 0, 0);
 
     /* Set cooldowns */
     ld2410_set_moving_cooldown(shs_movement_cooldown_sec);
@@ -1726,7 +1728,6 @@ static void shs_ld2450_task(void *pvParameters) {
 
     /* Zigbee connectivity monitoring */
     uint32_t last_zb_check_time = 0;
-    static bool zb_recovery_in_progress = false;
 
     while (1) {
         ld2450_process();
@@ -1773,7 +1774,7 @@ static void shs_ld2450_task(void *pvParameters) {
 
             /* Send heartbeat report (target count) to keep connection alive */
             /* This prevents false "no TX" detection when room has stable presence */
-            if (shs_zb_connected && !zb_recovery_in_progress) {
+            if (shs_zb_connected && !shs_zb_rejoin_pending) {
                 shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)shs_ld2450_target_count);
                 shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT);
                 ESP_LOGD(SHS_TAG, "Zigbee heartbeat sent (target_count=%d)", shs_ld2450_target_count);
@@ -1781,11 +1782,11 @@ static void shs_ld2450_task(void *pvParameters) {
 
             /* Check if we haven't had a successful TX in a while (3 minutes) */
             /* This should now only trigger if heartbeat also fails */
-            if (time_since_last_tx > 180000 && shs_last_successful_tx > 0 && !zb_recovery_in_progress) {
-                ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms (even heartbeat failed) - triggering rejoin",
+            if (time_since_last_tx > 180000 && shs_last_successful_tx > 0 && !shs_zb_rejoin_pending) {
+                ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms (even heartbeat failed) - scheduling rejoin",
                          (unsigned long)time_since_last_tx);
                 ESP_LOGW(SHS_TAG, "Zigbee: consecutive lock fails: %lu", (unsigned long)shs_lock_consecutive_fails);
-                zb_recovery_in_progress = true;
+                shs_zb_rejoin_pending = true;
                 shs_zb_connected = false;
                 /* Reset counters after rejoin attempt */
                 shs_lock_fail_count = 0;
@@ -1793,10 +1794,6 @@ static void shs_ld2450_task(void *pvParameters) {
                 shs_tx_success_count = 0;
                 esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
                                        ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
-            } else if (shs_zb_connected && zb_recovery_in_progress) {
-                /* Recovery succeeded */
-                ESP_LOGI(SHS_TAG, "Zigbee: Network connectivity restored");
-                zb_recovery_in_progress = false;
             }
         }
 
@@ -1898,6 +1895,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
             ESP_LOGI(SHS_TAG, "Joined network (PAN:0x%04hx, Ch:%d)",
                      esp_zb_get_pan_id(), esp_zb_get_current_channel());
             shs_zb_connected = true;
+            shs_zb_rejoin_pending = false;  /* Clear rejoin flag on successful join */
             shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
             /* Device just joined - force update sensor states now */
             shs_ld2410c_force_update();
@@ -1905,6 +1903,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
         } else {
             ESP_LOGW(SHS_TAG, "Network steering not successful (%s)", esp_err_to_name(err_status));
             shs_zb_connected = false;
+            /* Keep rejoin pending and retry */
             esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
                                    ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
         }
@@ -1912,28 +1911,43 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
 
     case ESP_ZB_ZDO_DEVICE_UNAVAILABLE:
         /* Device has lost connection to coordinator - attempt recovery */
-        ESP_LOGW(SHS_TAG, "Device unavailable signal (0x3c) - network connectivity lost");
         shs_zb_connected = false;
-        /* Schedule network rejoin attempt after 5 seconds */
-        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
-                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 5000);
+        if (!shs_zb_rejoin_pending) {
+            ESP_LOGW(SHS_TAG, "Device unavailable signal (0x3c) - scheduling rejoin");
+            shs_zb_rejoin_pending = true;
+            /* Schedule network rejoin attempt after 5 seconds */
+            esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                                   ESP_ZB_BDB_MODE_NETWORK_STEERING, 5000);
+        } else {
+            ESP_LOGD(SHS_TAG, "Device unavailable signal - rejoin already pending, ignoring");
+        }
         break;
 
     case ESP_ZB_ZDO_SIGNAL_LEAVE:
         /* Device is leaving the network */
-        ESP_LOGW(SHS_TAG, "Leave signal received - attempting to rejoin");
         shs_zb_connected = false;
-        /* Schedule rejoin after 2 seconds */
-        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
-                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 2000);
+        if (!shs_zb_rejoin_pending) {
+            ESP_LOGW(SHS_TAG, "Leave signal received - scheduling rejoin");
+            shs_zb_rejoin_pending = true;
+            /* Schedule rejoin after 2 seconds */
+            esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                                   ESP_ZB_BDB_MODE_NETWORK_STEERING, 2000);
+        } else {
+            ESP_LOGD(SHS_TAG, "Leave signal - rejoin already pending, ignoring");
+        }
         break;
 
     case ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT:
         /* No parent/links available */
-        ESP_LOGW(SHS_TAG, "No active network links - attempting rejoin");
         shs_zb_connected = false;
-        esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
-                               ESP_ZB_BDB_MODE_NETWORK_STEERING, 3000);
+        if (!shs_zb_rejoin_pending) {
+            ESP_LOGW(SHS_TAG, "No active network links - scheduling rejoin");
+            shs_zb_rejoin_pending = true;
+            esp_zb_scheduler_alarm((esp_zb_callback_t)shs_bdb_start_top_level_commissioning_cb,
+                                   ESP_ZB_BDB_MODE_NETWORK_STEERING, 3000);
+        } else {
+            ESP_LOGD(SHS_TAG, "No active links signal - rejoin already pending, ignoring");
+        }
         break;
 
     default:

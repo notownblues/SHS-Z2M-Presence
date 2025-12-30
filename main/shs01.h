@@ -48,14 +48,13 @@
 #define SHS_EP_ZONE2_TARGETS            20  /* Zone 2 target count (genAnalogInput) */
 #define SHS_EP_ZONE3_TARGETS            21  /* Zone 3 target count (genAnalogInput) */
 
-/* End Device config (allows WiFi coexistence) */
+/* Router config - mains powered, always listening, no polling needed */
 #define SHS_ZR_CONFIG()                                         \
     {                                                           \
-        .esp_zb_role = ESP_ZB_DEVICE_TYPE_ED,                   \
+        .esp_zb_role = ESP_ZB_DEVICE_TYPE_ROUTER,               \
         .install_code_policy = SHS_INSTALLCODE_POLICY_ENABLE,   \
-        .nwk_cfg.zed_cfg = {                                    \
-            .ed_timeout = ESP_ZB_ED_AGING_TIMEOUT_64MIN,        \
-            .keep_alive = 3000,                                 \
+        .nwk_cfg.zczr_cfg = {                                   \
+            .max_children = 10,                                 \
         },                                                      \
     }
 

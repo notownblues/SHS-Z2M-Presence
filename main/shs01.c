@@ -1761,7 +1761,7 @@ static void shs_ld2450_task(void *pvParameters) {
 
         was_connected = connected;
 
-        /* Periodic Zigbee connectivity check (every 60 seconds) */
+        /* Periodic Zigbee connectivity check and heartbeat (every 60 seconds) */
         if (shs_zb_ready && (now - last_zb_check_time) >= SHS_ZB_CONNECTIVITY_CHECK_MS) {
             last_zb_check_time = now;
 
@@ -1771,9 +1771,18 @@ static void shs_ld2450_task(void *pvParameters) {
                      (unsigned long)shs_lock_success_count, (unsigned long)shs_lock_fail_count,
                      (unsigned long)shs_tx_success_count, (unsigned long)time_since_last_tx);
 
+            /* Send heartbeat report (target count) to keep connection alive */
+            /* This prevents false "no TX" detection when room has stable presence */
+            if (shs_zb_connected && !zb_recovery_in_progress) {
+                shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)shs_ld2450_target_count);
+                shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT);
+                ESP_LOGD(SHS_TAG, "Zigbee heartbeat sent (target_count=%d)", shs_ld2450_target_count);
+            }
+
             /* Check if we haven't had a successful TX in a while (3 minutes) */
+            /* This should now only trigger if heartbeat also fails */
             if (time_since_last_tx > 180000 && shs_last_successful_tx > 0 && !zb_recovery_in_progress) {
-                ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms - triggering network rejoin",
+                ESP_LOGW(SHS_TAG, "Zigbee: No successful TX for %lu ms (even heartbeat failed) - triggering rejoin",
                          (unsigned long)time_since_last_tx);
                 ESP_LOGW(SHS_TAG, "Zigbee: consecutive lock fails: %lu", (unsigned long)shs_lock_consecutive_fails);
                 zb_recovery_in_progress = true;

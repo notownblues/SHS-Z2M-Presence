@@ -1,14 +1,14 @@
 # SHS-Z2M-Presence
 
-![SHS-Z2M-Presence Sensor](docs/sensor-image.jpg)
-
 **Dual mmWave Presence Sensor Firmware for ESP32-C6 with Zigbee2MQTT Support**
+
+![SHS-Z2M-Presence Sensor](docs/sensor-image.jpg)
 
 ---
 
 ## Overview
 
-This project is a continuation of the original **Smart Home Scene** DIY Zigbee mmWave presence sensor made for the ESP32-C6 + LD2410. This enhanced firmware now supports the **LD2450** sensor for **multi-zone detection** and **multi-target tracking** (up to 3 simultaneous targets).
+This project is a continuation of the original [**Smart Home Scene** DIY Zigbee mmWave presence sensor](https://smarthomescene.com/guides/diy-zigbee-mmwave-presence-sensor-with-esp32-c6-and-ld2410/) made for the ESP32-C6 + LD2410. This enhanced firmware now supports the **LD2450** sensor for **multi-zone detection** and **multi-target tracking** (up to 3 simultaneous targets).
 
 The sensor is fully compatible with **Zigbee2MQTT** and works seamlessly with Home Assistant.
 

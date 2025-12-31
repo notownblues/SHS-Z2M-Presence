@@ -167,7 +167,7 @@ When Config Mode is activated or deactivated, the onboard LED will toggle to pro
 Config Mode streams X/Y coordinates, distances, and target data continuously, generating **significantly more Zigbee traffic** than normal operation.
 
 **Testing Results:**
-This mode was tested for 2 weeks on a network with 100+ devices using a ZBDongle-P coordinator without any network crashes. However, every setup is different. If your network already has "chatty" devices, prolonged use of Config Mode could potentially cause instability.
+This mode was tested for 2 weeks during 5-10 minutes at a time on a network with 100+ devices using a ZBDongle-P coordinator and did not cause any network crashes. However, every setup is different. If your network already has "chatty" devices, prolonged use of Config Mode could potentially cause instability.
 
 **Best Practices:**
 - Enable Config Mode only while actively configuring zones in the Zone Configurator
@@ -229,3 +229,4 @@ Contributions are welcome! Feel free to:
 - **Design enclosure cases** — I would love to see community-designed cases for this sensor!
 
 If you find this project useful, consider giving it a star!
+

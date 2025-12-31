@@ -97,6 +97,8 @@ Copy `zigbee2mqtt/external_converters/shs01_enhanced.js` from this repository to
 
 Restart Zigbee2MQTT for the changes to take effect. Your device should now expose all available entities.
 
+If some or all entities show as "Null" or "N/A", click the "Configure" button straight after pairing to refresh the states.
+
 ---
 
 ## What the Sensor Exposes

@@ -14,6 +14,8 @@ The sensor is fully compatible with **Zigbee2MQTT** and works seamlessly with Ho
 
 ### Companion Home Assistant Add-on
 
+![Zone Configurator Add-on](docs/zone-configurator.png)
+
 For the best experience, install the **SHS Z2M Presence Zone Configurator** add-on for Home Assistant. It allows you to:
 
 - Create rooms with custom floor plans
@@ -23,8 +25,6 @@ For the best experience, install the **SHS Z2M Presence Zone Configurator** add-
 - Real-time target tracking visualization
 
 **[SHS Z2M Presence Zones Add-on →](https://github.com/notownblues/SHS-Z2M-Presence-Zones)**
-
-![Zone Configurator Add-on](docs/zone-configurator.png)
 
 ---
 

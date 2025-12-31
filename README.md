@@ -1,7 +1,6 @@
 # SHS-Z2M-Presence
 
-<!-- TODO: Add diagram image here -->
-![SHS-Z2M-Presence Diagram](docs/diagram.png)
+![SHS-Z2M-Presence Sensor](docs/sensor-image.jpg)
 
 **Dual mmWave Presence Sensor Firmware for ESP32-C6 with Zigbee2MQTT Support**
 
@@ -25,6 +24,8 @@ For the best experience, install the **SHS Z2M Presence Zone Configurator** add-
 
 **[SHS Z2M Presence Zones Add-on →](https://github.com/notownblues/SHS-Z2M-Presence-Zones)**
 
+![Zone Configurator Add-on](docs/zone-configurator.png)
+
 ---
 
 ## Hardware Requirements
@@ -34,6 +35,26 @@ For the best experience, install the **SHS Z2M Presence Zone Configurator** add-
 | ESP32-C6 | Zigbee-enabled microcontroller |
 | LD2410C | Presence detection (moving/static) |
 | LD2450 | Multi-target position tracking & zones |
+
+---
+
+## Wiring
+
+![ESP32-C6 Wiring Diagram](docs/esp32-c6-wiring.webp)
+
+### LD2410C
+- TX (LD2410C) → GPIO4 (RX1) on ESP32-C6
+- RX (LD2410C) → GPIO5 (TX1) on ESP32-C6
+- VCC → 5V
+- GND → GND
+
+### LD2450
+- TX (LD2450) → GPIO19 (RX0) on ESP32-C6
+- RX (LD2450) → GPIO18 (TX0) on ESP32-C6
+- VCC → 5V
+- GND → GND
+
+> **Note:** Some ESP32-C6 boards have 2 x 5V pins and some have one. Both sensors can share the same 5V pin or use separate ones if available.
 
 ---
 
@@ -137,7 +158,7 @@ To deactivate, use the same methods (toggle OFF, click button, or 3 more clicks)
 
 When Config Mode is activated or deactivated, the onboard LED will toggle to provide visual feedback.
 
-### Important Warnings
+### ⚠️ Important Warnings
 
 > **Use Config Mode only during zone configuration!**
 

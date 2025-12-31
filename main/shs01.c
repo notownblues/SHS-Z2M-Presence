@@ -872,17 +872,73 @@ static bool is_valid_target(const ld2450_target_t *target) {
     return true;
 }
 
+/* Check if a point is within a rectangular zone */
+static bool shs_point_in_zone(int16_t x, int16_t y, int16_t x1, int16_t y1, int16_t x2, int16_t y2) {
+    int16_t min_x = (x1 < x2) ? x1 : x2;
+    int16_t max_x = (x1 > x2) ? x1 : x2;
+    int16_t min_y = (y1 < y2) ? y1 : y2;
+    int16_t max_y = (y1 > y2) ? y1 : y2;
+    return (x >= min_x && x <= max_x && y >= min_y && y <= max_y);
+}
+
+/* Check if a target is in any enabled interference zone */
+static bool shs_target_in_interference_zone(int16_t x, int16_t y) {
+    /* Check zone 1 */
+    if (shs_zone1_enabled && shs_zone1_type == LD2450_ZONE_INTERFERENCE) {
+        if (shs_point_in_zone(x, y, shs_zone1_x1, shs_zone1_y1, shs_zone1_x2, shs_zone1_y2)) {
+            return true;
+        }
+    }
+    /* Check zone 2 */
+    if (shs_zone2_enabled && shs_zone2_type == LD2450_ZONE_INTERFERENCE) {
+        if (shs_point_in_zone(x, y, shs_zone2_x1, shs_zone2_y1, shs_zone2_x2, shs_zone2_y2)) {
+            return true;
+        }
+    }
+    /* Check zone 3 */
+    if (shs_zone3_enabled && shs_zone3_type == LD2450_ZONE_INTERFERENCE) {
+        if (shs_point_in_zone(x, y, shs_zone3_x1, shs_zone3_y1, shs_zone3_x2, shs_zone3_y2)) {
+            return true;
+        }
+    }
+    /* Check zone 4 */
+    if (shs_zone4_enabled && shs_zone4_type == LD2450_ZONE_INTERFERENCE) {
+        if (shs_point_in_zone(x, y, shs_zone4_x1, shs_zone4_y1, shs_zone4_x2, shs_zone4_y2)) {
+            return true;
+        }
+    }
+    /* Check zone 5 */
+    if (shs_zone5_enabled && shs_zone5_type == LD2450_ZONE_INTERFERENCE) {
+        if (shs_point_in_zone(x, y, shs_zone5_x1, shs_zone5_y1, shs_zone5_x2, shs_zone5_y2)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void shs_on_ld2450_target_update(const ld2450_target_t *targets, uint8_t active_count) {
-    /* Update target count (only changes trigger update) */
-    if (shs_ld2450_target_count != active_count) {
-        shs_ld2450_target_count = active_count;
-        shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)active_count);
-        shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT);  /* Explicit report */
-        ESP_LOGI(SHS_TAG, "LD2450 target count: %d", active_count);
+    /* Calculate effective count excluding targets in interference zones */
+    uint8_t effective_count = 0;
+    for (int i = 0; i < 3; i++) {
+        if (is_valid_target(&targets[i]) && targets[i].active) {
+            /* Check if target is in any interference zone */
+            if (!shs_target_in_interference_zone(targets[i].x, targets[i].y)) {
+                effective_count++;
+            }
+        }
     }
 
-    /* Update overall occupancy */
-    bool new_occupancy = (active_count > 0);
+    /* Update target count using effective count (excludes interference zones) */
+    if (shs_ld2450_target_count != effective_count) {
+        shs_ld2450_target_count = effective_count;
+        shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)effective_count);
+        shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT);  /* Explicit report */
+        ESP_LOGI(SHS_TAG, "LD2450 target count: %d (raw: %d, filtered: %d in interference)",
+                 effective_count, active_count, active_count - effective_count);
+    }
+
+    /* Update overall occupancy using effective count (excludes interference zones) */
+    bool new_occupancy = (effective_count > 0);
     if (shs_ld2450_occupancy != new_occupancy) {
         shs_ld2450_occupancy = new_occupancy;
         shs_zb_set_occ_bitmap(SHS_EP_LD2450_OCC, new_occupancy);
@@ -1511,9 +1567,11 @@ static esp_err_t shs_zb_attribute_handler(const esp_zb_zcl_set_attr_value_messag
             case SHS_ATTR_POSITION_REPORTING:
                 shs_position_reporting = (v8 != 0);
                 ld2450_set_verbose_logging(shs_position_reporting);  /* Enable verbose logs when position reporting is on */
-                ESP_LOGI(SHS_TAG, "Position Reporting = %s (X/Y coordinate updates %s)",
+                light_driver_set_power(shs_position_reporting);  /* Turn light ON when config mode enabled */
+                ESP_LOGI(SHS_TAG, "Position Reporting = %s (X/Y coordinate updates %s, light %s)",
                          shs_position_reporting ? "ON" : "OFF",
-                         shs_position_reporting ? "enabled" : "disabled");
+                         shs_position_reporting ? "enabled" : "disabled",
+                         shs_position_reporting ? "ON" : "OFF");
                 if (shs_position_reporting) {
                     ESP_LOGW(SHS_TAG, "WARNING: Position reporting will increase Zigbee traffic!");
                 }
@@ -1850,9 +1908,11 @@ static void shs_boot_button_task(void *pv) {
                     click_count = 0;
                     shs_position_reporting = !shs_position_reporting;
                     ld2450_set_verbose_logging(shs_position_reporting);  /* Enable verbose logs when config mode is on */
+                    light_driver_set_power(shs_position_reporting);  /* Turn light ON when config mode enabled */
 
-                    ESP_LOGI(SHS_TAG, "TRIPLE-CLICK: CONFIG MODE %s",
-                             shs_position_reporting ? "ENABLED" : "DISABLED");
+                    ESP_LOGI(SHS_TAG, "TRIPLE-CLICK: CONFIG MODE %s (light %s)",
+                             shs_position_reporting ? "ENABLED" : "DISABLED",
+                             shs_position_reporting ? "ON" : "OFF");
 
                     /* Flash LED: 2 quick flashes = ON, 1 long flash = OFF */
                     if (shs_position_reporting) {

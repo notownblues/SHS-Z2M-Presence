@@ -162,10 +162,6 @@ function calculateZoneTargets(meta) {
         if (inZone4) result.zone_4_targets++;
         if (inZone5) result.zone_5_targets++;
 
-        // Debug log for first target
-        if (i === 0 && (inZone1 || inZone2 || inZone3 || inZone4 || inZone5)) {
-            console.log(`SHS01: Target ${i+1} at (${target.x}, ${target.y}) in zones: Z1=${inZone1}, Z2=${inZone2}, Z3=${inZone3}, Z4=${inZone4}, Z5=${inZone5}`);
-        }
     }
 
     return result;
@@ -212,11 +208,21 @@ const definition = {
                         case EP_T3_Y: result.target3_y = Math.round(value); break;
                         case EP_T3_DIST: result.target3_distance = Math.round(value); break;
                         // EP19/20/21/24/25: Zone target counts (from firmware)
-                        case EP_ZONE1_TARGETS: result.zone_1_targets = Math.round(value); break;
-                        case EP_ZONE2_TARGETS: result.zone_2_targets = Math.round(value); break;
-                        case EP_ZONE3_TARGETS: result.zone_3_targets = Math.round(value); break;
-                        case EP_ZONE4_TARGETS: result.zone_4_targets = Math.round(value); break;
-                        case EP_ZONE5_TARGETS: result.zone_5_targets = Math.round(value); break;
+                        case EP_ZONE1_TARGETS:
+                            result.zone_1_targets = Math.round(value);
+                            break;
+                        case EP_ZONE2_TARGETS:
+                            result.zone_2_targets = Math.round(value);
+                            break;
+                        case EP_ZONE3_TARGETS:
+                            result.zone_3_targets = Math.round(value);
+                            break;
+                        case EP_ZONE4_TARGETS:
+                            result.zone_4_targets = Math.round(value);
+                            break;
+                        case EP_ZONE5_TARGETS:
+                            result.zone_5_targets = Math.round(value);
+                            break;
                     }
                 }
 
@@ -324,27 +330,18 @@ const definition = {
                 // Zone target counts from firmware (these are read-only, calculated by firmware)
                 if (msg.data.hasOwnProperty(ATTR_ZONE1_TARGETS_CFG)) {
                     result.zone_1_targets = msg.data[ATTR_ZONE1_TARGETS_CFG];
-                    console.log(`SHS01: Zone 1 targets = ${result.zone_1_targets}`);
                 }
                 if (msg.data.hasOwnProperty(ATTR_ZONE2_TARGETS_CFG)) {
                     result.zone_2_targets = msg.data[ATTR_ZONE2_TARGETS_CFG];
-                    console.log(`SHS01: Zone 2 targets = ${result.zone_2_targets}`);
                 }
                 if (msg.data.hasOwnProperty(ATTR_ZONE3_TARGETS_CFG)) {
                     result.zone_3_targets = msg.data[ATTR_ZONE3_TARGETS_CFG];
-                    console.log(`SHS01: Zone 3 targets = ${result.zone_3_targets}`);
                 }
                 if (msg.data.hasOwnProperty(ATTR_ZONE4_TARGETS_CFG)) {
                     result.zone_4_targets = msg.data[ATTR_ZONE4_TARGETS_CFG];
-                    console.log(`SHS01: Zone 4 targets = ${result.zone_4_targets}`);
                 }
                 if (msg.data.hasOwnProperty(ATTR_ZONE5_TARGETS_CFG)) {
                     result.zone_5_targets = msg.data[ATTR_ZONE5_TARGETS_CFG];
-                    console.log(`SHS01: Zone 5 targets = ${result.zone_5_targets}`);
-                }
-                // Debug: log all received config cluster attributes
-                if (Object.keys(result).length === 0) {
-                    console.log(`SHS01: Config cluster data received:`, JSON.stringify(msg.data));
                 }
                 return result;
             },

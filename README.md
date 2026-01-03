@@ -71,12 +71,30 @@ For the best experience, install the **SHS Z2M Presence Zone Configurator** add-
 
 ## Firmware Flashing
 
-The flashing process is thoroughly documented by Smart Home Scene. Follow the complete tutorial here:
+  ### Option 1: Flash firmware with ESPHome Web (Recommended)
 
-**[DIY Zigbee mmWave Presence Sensor with ESP32-C6 and LD2410 →](https://smarthomescene.com/guides/diy-zigbee-mmwave-presence-sensor-with-esp32-c6-and-ld2410/)**
+  The easiest way to flash the firmware (no development environment needed).
 
-Once you've flashed the firmware and paired the device with Zigbee2MQTT, continue with the steps below.
+  1. Download `SHS01_vX.X.X_merged.bin` from the [Releases page](https://github.com/notownblues/SHS-Z2M-Presence/releases)
 
+  2. Go to [ESPHome Web Tool](https://web.esphome.io/)
+
+  3. Click **"CONNECT"** and select your ESP32-C6 serial port
+
+  4. Once connected, click **"INSTALL"**
+
+  5. Select **"Choose File"** and pick the downloaded `.bin` file
+
+  6. Click **"INSTALL"** and wait for completion (~15 seconds)
+
+  > **Tip:** If the device isn't detected, hold the **BOOT** button while plugging in the USB cable, then try again.
+
+  ### Option 2: Build from Source
+
+  For developers who want to modify the firmware or build from source, follow the complete tutorial by Smart Home Scene:
+
+  [DIY Zigbee mmWave Presence Sensor with ESP32-C6 and LD2410 →](https://smarthomescene.com/diy/diy-zigbee-mmwave-presence-sensor-with-esp32-c6-and-ld2410/)
+  
 ---
 
 ## Setting Up the Zigbee2MQTT Converter
@@ -199,19 +217,7 @@ During development and testing, I discovered that the LD2450 was causing interfe
 
 ---
 
-## Building from Source
-
-If you want to modify and build the firmware yourself:
-
-```bash
-idf.py set-target esp32c6
-idf.py build
-idf.py flash
-```
-
----
-
-## Credits & Acknowledgments
+## Credits
 
 This project would not have been possible without the excellent work from **[Smart Home Scene](https://smarthomescene.com)**. Their original DIY Zigbee mmWave presence sensor guide and firmware provided the foundation for this enhanced version.
 
@@ -229,4 +235,5 @@ Contributions are welcome! Feel free to:
 - **Design enclosure cases** — I would love to see community-designed cases for this sensor!
 
 If you find this project useful, consider giving it a star!
+
 

@@ -161,6 +161,23 @@ static uint32_t shs_tx_fail_count = 0;
         shs_lock_consecutive_fails = 0; \
     } while(0)
 
+/* Helper macro: acquire Zigbee lock with timeout, returns false on failure (for bool functions) */
+#define SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE() \
+    do { \
+        if (esp_zb_lock_acquire(pdMS_TO_TICKS(SHS_ZB_LOCK_TIMEOUT_MS)) != true) { \
+            shs_lock_fail_count++; \
+            shs_lock_consecutive_fails++; \
+            if (shs_lock_consecutive_fails == 1 || shs_lock_consecutive_fails == 10 || \
+                shs_lock_consecutive_fails == 50 || (shs_lock_consecutive_fails % 100) == 0) { \
+                ESP_LOGW(SHS_TAG, "Zigbee lock timeout #%lu (consecutive: %lu)", \
+                         (unsigned long)shs_lock_fail_count, (unsigned long)shs_lock_consecutive_fails); \
+            } \
+            return false; \
+        } \
+        shs_lock_success_count++; \
+        shs_lock_consecutive_fails = 0; \
+    } while(0)
+
 /* ============================================================================
  * LD2450 LIVE DATA - Standard clusters only (no flooding)
  * ============================================================================ */
@@ -574,23 +591,25 @@ static void shs_zone_cfg_apply_to_sensor(void) {
 /* Forward declarations */
 static bool is_valid_target(const ld2450_target_t *target);
 static void shs_zigbee_task(void *pvParameters);
-static void shs_zb_set_binary_value(uint8_t endpoint, bool value);
+static bool shs_zb_set_binary_value(uint8_t endpoint, bool value);
 static void shs_bdb_start_top_level_commissioning_cb(uint8_t mode_mask);
 
 /* ============================================================================
  * ZIGBEE ATTRIBUTE HELPERS
  * ============================================================================ */
 
-static void shs_zb_set_occ_bitmap(uint8_t endpoint, bool occupied) {
-    if (!shs_zb_ready) return;
+/* Set occupancy bitmap - returns true if successful, false if Zigbee not ready or lock failed */
+static bool shs_zb_set_occ_bitmap(uint8_t endpoint, bool occupied) {
+    if (!shs_zb_ready) return false;
     uint8_t v = occupied ? 1 : 0;
-    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE();
     esp_zb_zcl_set_attribute_val(endpoint,
                                  ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
                                  ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                                  ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
                                  &v, false);
     esp_zb_lock_release();
+    return true;
 }
 
 static void shs_zb_set_bool_attr(uint8_t endpoint, uint16_t cluster, uint16_t attr_id, bool value) {
@@ -765,11 +784,12 @@ static void shs_on_state_change(const ld2410_state_t *state) {
  * HELPER: Set attributes for standard clusters
  * ============================================================================ */
 
-/* Set analog input presentValue (float) - for target count */
-static void shs_zb_set_analog_value(uint8_t endpoint, float value) {
-    if (!shs_zb_ready) return;
+/* Set analog input presentValue (float) - for target count
+ * Returns true if successful, false if Zigbee not ready or lock failed */
+static bool shs_zb_set_analog_value(uint8_t endpoint, float value) {
+    if (!shs_zb_ready) return false;
 
-    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE();
     esp_zb_zcl_set_attribute_val(
         endpoint,
         SHS_CLUSTER_ANALOG_INPUT,
@@ -779,11 +799,13 @@ static void shs_zb_set_analog_value(uint8_t endpoint, float value) {
         false  /* Don't rely on automatic report */
     );
     esp_zb_lock_release();
+    return true;
 }
 
-/* Explicit analog attribute report sender */
-static void shs_zb_report_analog_attr(uint8_t endpoint) {
-    if (!shs_zb_ready) return;
+/* Explicit analog attribute report sender
+ * Returns true if successful, false if Zigbee not ready or lock failed */
+static bool shs_zb_report_analog_attr(uint8_t endpoint) {
+    if (!shs_zb_ready) return false;
 
     esp_zb_zcl_report_attr_cmd_t cmd = {
         .zcl_basic_cmd = {
@@ -800,19 +822,21 @@ static void shs_zb_report_analog_attr(uint8_t endpoint) {
         .attributeID = SHS_ATTR_PRESENT_VALUE,
     };
 
-    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
     shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     shs_tx_success_count++;
     esp_zb_lock_release();
+    return true;
 }
 
-/* Set binary input presentValue (bool) - for zone occupancy */
-static void shs_zb_set_binary_value(uint8_t endpoint, bool value) {
-    if (!shs_zb_ready) return;
+/* Set binary input presentValue (bool) - for zone occupancy
+ * Returns true if successful, false if Zigbee not ready or lock failed */
+static bool shs_zb_set_binary_value(uint8_t endpoint, bool value) {
+    if (!shs_zb_ready) return false;
 
     uint8_t val = value ? 1 : 0;
-    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE();
     esp_zb_zcl_set_attribute_val(
         endpoint,
         SHS_CLUSTER_BINARY_INPUT,
@@ -822,11 +846,13 @@ static void shs_zb_set_binary_value(uint8_t endpoint, bool value) {
         false  /* Don't rely on auto-report, use explicit report instead */
     );
     esp_zb_lock_release();
+    return true;
 }
 
-/* Explicit binary attribute report sender */
-static void shs_zb_report_binary_attr(uint8_t endpoint) {
-    if (!shs_zb_ready) return;
+/* Explicit binary attribute report sender
+ * Returns true if successful, false if Zigbee not ready or lock failed */
+static bool shs_zb_report_binary_attr(uint8_t endpoint) {
+    if (!shs_zb_ready) return false;
 
     esp_zb_zcl_report_attr_cmd_t cmd = {
         .zcl_basic_cmd = {
@@ -843,11 +869,12 @@ static void shs_zb_report_binary_attr(uint8_t endpoint) {
         .attributeID = SHS_ATTR_PRESENT_VALUE_BINARY,
     };
 
-    SHS_ZB_LOCK_ACQUIRE_OR_RETURN();
+    SHS_ZB_LOCK_ACQUIRE_OR_RETURN_FALSE();
     esp_zb_zcl_report_attr_cmd_req(&cmd);
     shs_last_successful_tx = (uint32_t)(esp_timer_get_time() / 1000);
     shs_tx_success_count++;
     esp_zb_lock_release();
+    return true;
 }
 
 /* No longer needed - using shs_zb_set_occ_bitmap instead which has proper locking */
@@ -928,21 +955,29 @@ static void shs_on_ld2450_target_update(const ld2450_target_t *targets, uint8_t 
         }
     }
 
-    /* Update target count using effective count (excludes interference zones) */
+    /* Update target count using effective count (excludes interference zones)
+     * Only update local state if Zigbee report succeeds to prevent desync */
     if (shs_ld2450_target_count != effective_count) {
-        shs_ld2450_target_count = effective_count;
-        shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)effective_count);
-        shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT);  /* Explicit report */
-        ESP_LOGI(SHS_TAG, "LD2450 target count: %d (raw: %d, filtered: %d in interference)",
-                 effective_count, active_count, active_count - effective_count);
+        if (shs_zb_set_analog_value(SHS_EP_LD2450_TARGET_COUNT, (float)effective_count) &&
+            shs_zb_report_analog_attr(SHS_EP_LD2450_TARGET_COUNT)) {
+            shs_ld2450_target_count = effective_count;
+            ESP_LOGI(SHS_TAG, "LD2450 target count: %d (raw: %d, filtered: %d in interference)",
+                     effective_count, active_count, active_count - effective_count);
+        } else {
+            ESP_LOGW(SHS_TAG, "LD2450 target count report FAILED - will retry");
+        }
     }
 
-    /* Update overall occupancy using effective count (excludes interference zones) */
+    /* Update overall occupancy using effective count (excludes interference zones)
+     * Only update local state if Zigbee report succeeds to prevent desync */
     bool new_occupancy = (effective_count > 0);
     if (shs_ld2450_occupancy != new_occupancy) {
-        shs_ld2450_occupancy = new_occupancy;
-        shs_zb_set_occ_bitmap(SHS_EP_LD2450_OCC, new_occupancy);
-        ESP_LOGI(SHS_TAG, "LD2450 occupancy: %s", new_occupancy ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_occ_bitmap(SHS_EP_LD2450_OCC, new_occupancy)) {
+            shs_ld2450_occupancy = new_occupancy;
+            ESP_LOGI(SHS_TAG, "LD2450 occupancy: %s", new_occupancy ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "LD2450 occupancy report FAILED - will retry");
+        }
     }
 
     /* Store current target data for HTTP polling (thread-safe) - filter garbage data */
@@ -1056,86 +1091,117 @@ static void shs_on_ld2450_target_update(const ld2450_target_t *targets, uint8_t 
  * @brief Zone occupancy callback
  * Updates zone occupancy binary inputs and target counts when zones change state
  * Both binary and analog use explicit reports for reliability
+ * IMPORTANT: Local state is only updated AFTER successful Zigbee report to prevent desync
  */
 static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy) {
-    /* Update zone 1 occupancy */
+    /* Update zone 1 occupancy - only update local state if report succeeds */
     if (zones[0].enabled && shs_zone1_occupied != zones[0].occupied) {
-        shs_zone1_occupied = zones[0].occupied;
-        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE1, zones[0].occupied);
-        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE1);
-        ESP_LOGI(SHS_TAG, "Zone 1: %s", zones[0].occupied ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_binary_value(SHS_EP_LD2450_ZONE1, zones[0].occupied) &&
+            shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE1)) {
+            shs_zone1_occupied = zones[0].occupied;
+            ESP_LOGI(SHS_TAG, "Zone 1: %s", zones[0].occupied ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 1 occupancy report FAILED - will retry");
+        }
     }
 
-    /* Update zone 1 target count */
+    /* Update zone 1 target count - only update local state if report succeeds */
     if (zones[0].enabled && shs_zone1_targets != zones[0].target_count) {
-        shs_zone1_targets = zones[0].target_count;
-        shs_zb_set_analog_value(SHS_EP_ZONE1_TARGETS, (float)shs_zone1_targets);
-        shs_zb_report_analog_attr(SHS_EP_ZONE1_TARGETS);
-        ESP_LOGI(SHS_TAG, "Zone 1 targets: %d", shs_zone1_targets);
+        if (shs_zb_set_analog_value(SHS_EP_ZONE1_TARGETS, (float)zones[0].target_count) &&
+            shs_zb_report_analog_attr(SHS_EP_ZONE1_TARGETS)) {
+            shs_zone1_targets = zones[0].target_count;
+            ESP_LOGI(SHS_TAG, "Zone 1 targets: %d", shs_zone1_targets);
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 1 targets report FAILED - will retry");
+        }
     }
 
     /* Update zone 2 occupancy */
     if (zones[1].enabled && shs_zone2_occupied != zones[1].occupied) {
-        shs_zone2_occupied = zones[1].occupied;
-        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE2, zones[1].occupied);
-        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE2);
-        ESP_LOGI(SHS_TAG, "Zone 2: %s", zones[1].occupied ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_binary_value(SHS_EP_LD2450_ZONE2, zones[1].occupied) &&
+            shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE2)) {
+            shs_zone2_occupied = zones[1].occupied;
+            ESP_LOGI(SHS_TAG, "Zone 2: %s", zones[1].occupied ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 2 occupancy report FAILED - will retry");
+        }
     }
 
     /* Update zone 2 target count */
     if (zones[1].enabled && shs_zone2_targets != zones[1].target_count) {
-        shs_zone2_targets = zones[1].target_count;
-        shs_zb_set_analog_value(SHS_EP_ZONE2_TARGETS, (float)shs_zone2_targets);
-        shs_zb_report_analog_attr(SHS_EP_ZONE2_TARGETS);
-        ESP_LOGI(SHS_TAG, "Zone 2 targets: %d", shs_zone2_targets);
+        if (shs_zb_set_analog_value(SHS_EP_ZONE2_TARGETS, (float)zones[1].target_count) &&
+            shs_zb_report_analog_attr(SHS_EP_ZONE2_TARGETS)) {
+            shs_zone2_targets = zones[1].target_count;
+            ESP_LOGI(SHS_TAG, "Zone 2 targets: %d", shs_zone2_targets);
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 2 targets report FAILED - will retry");
+        }
     }
 
     /* Update zone 3 occupancy */
     if (zones[2].enabled && shs_zone3_occupied != zones[2].occupied) {
-        shs_zone3_occupied = zones[2].occupied;
-        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE3, zones[2].occupied);
-        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE3);
-        ESP_LOGI(SHS_TAG, "Zone 3: %s", zones[2].occupied ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_binary_value(SHS_EP_LD2450_ZONE3, zones[2].occupied) &&
+            shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE3)) {
+            shs_zone3_occupied = zones[2].occupied;
+            ESP_LOGI(SHS_TAG, "Zone 3: %s", zones[2].occupied ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 3 occupancy report FAILED - will retry");
+        }
     }
 
     /* Update zone 3 target count */
     if (zones[2].enabled && shs_zone3_targets != zones[2].target_count) {
-        shs_zone3_targets = zones[2].target_count;
-        shs_zb_set_analog_value(SHS_EP_ZONE3_TARGETS, (float)shs_zone3_targets);
-        shs_zb_report_analog_attr(SHS_EP_ZONE3_TARGETS);
-        ESP_LOGI(SHS_TAG, "Zone 3 targets: %d", shs_zone3_targets);
+        if (shs_zb_set_analog_value(SHS_EP_ZONE3_TARGETS, (float)zones[2].target_count) &&
+            shs_zb_report_analog_attr(SHS_EP_ZONE3_TARGETS)) {
+            shs_zone3_targets = zones[2].target_count;
+            ESP_LOGI(SHS_TAG, "Zone 3 targets: %d", shs_zone3_targets);
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 3 targets report FAILED - will retry");
+        }
     }
 
     /* Update zone 4 occupancy */
     if (zones[3].enabled && shs_zone4_occupied != zones[3].occupied) {
-        shs_zone4_occupied = zones[3].occupied;
-        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE4, zones[3].occupied);
-        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE4);
-        ESP_LOGI(SHS_TAG, "Zone 4: %s", zones[3].occupied ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_binary_value(SHS_EP_LD2450_ZONE4, zones[3].occupied) &&
+            shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE4)) {
+            shs_zone4_occupied = zones[3].occupied;
+            ESP_LOGI(SHS_TAG, "Zone 4: %s", zones[3].occupied ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 4 occupancy report FAILED - will retry");
+        }
     }
 
     /* Update zone 4 target count */
     if (zones[3].enabled && shs_zone4_targets != zones[3].target_count) {
-        shs_zone4_targets = zones[3].target_count;
-        shs_zb_set_analog_value(SHS_EP_ZONE4_TARGETS, (float)shs_zone4_targets);
-        shs_zb_report_analog_attr(SHS_EP_ZONE4_TARGETS);
-        ESP_LOGI(SHS_TAG, "Zone 4 targets: %d", shs_zone4_targets);
+        if (shs_zb_set_analog_value(SHS_EP_ZONE4_TARGETS, (float)zones[3].target_count) &&
+            shs_zb_report_analog_attr(SHS_EP_ZONE4_TARGETS)) {
+            shs_zone4_targets = zones[3].target_count;
+            ESP_LOGI(SHS_TAG, "Zone 4 targets: %d", shs_zone4_targets);
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 4 targets report FAILED - will retry");
+        }
     }
 
     /* Update zone 5 occupancy */
     if (zones[4].enabled && shs_zone5_occupied != zones[4].occupied) {
-        shs_zone5_occupied = zones[4].occupied;
-        shs_zb_set_binary_value(SHS_EP_LD2450_ZONE5, zones[4].occupied);
-        shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE5);
-        ESP_LOGI(SHS_TAG, "Zone 5: %s", zones[4].occupied ? "OCCUPIED" : "CLEAR");
+        if (shs_zb_set_binary_value(SHS_EP_LD2450_ZONE5, zones[4].occupied) &&
+            shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE5)) {
+            shs_zone5_occupied = zones[4].occupied;
+            ESP_LOGI(SHS_TAG, "Zone 5: %s", zones[4].occupied ? "OCCUPIED" : "CLEAR");
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 5 occupancy report FAILED - will retry");
+        }
     }
 
     /* Update zone 5 target count */
     if (zones[4].enabled && shs_zone5_targets != zones[4].target_count) {
-        shs_zone5_targets = zones[4].target_count;
-        shs_zb_set_analog_value(SHS_EP_ZONE5_TARGETS, (float)shs_zone5_targets);
-        shs_zb_report_analog_attr(SHS_EP_ZONE5_TARGETS);
-        ESP_LOGI(SHS_TAG, "Zone 5 targets: %d", shs_zone5_targets);
+        if (shs_zb_set_analog_value(SHS_EP_ZONE5_TARGETS, (float)zones[4].target_count) &&
+            shs_zb_report_analog_attr(SHS_EP_ZONE5_TARGETS)) {
+            shs_zone5_targets = zones[4].target_count;
+            ESP_LOGI(SHS_TAG, "Zone 5 targets: %d", shs_zone5_targets);
+        } else {
+            ESP_LOGW(SHS_TAG, "Zone 5 targets report FAILED - will retry");
+        }
     }
 }
 
@@ -2869,6 +2935,11 @@ static void shs_zigbee_task(void *pvParameters) {
     esp_zb_device_register(dev_ep_list);
     esp_zb_core_action_handler_register(shs_zb_action_handler);
     esp_zb_set_primary_network_channel_set(SHS_PRIMARY_CHANNEL_MASK);
+
+    /* Allow pairing with coordinators even at low signal strength (LQI).
+     * ESP32-C6 defaults to minimum LQI of 32, which can prevent pairing
+     * in environments with interference or at longer distances. */
+    esp_zb_secur_network_min_join_lqi_set(0);
 
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();

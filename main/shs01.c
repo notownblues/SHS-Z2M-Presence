@@ -963,7 +963,7 @@ static void shs_on_ld2450_target_update(const ld2450_target_t *targets, uint8_t 
             shs_ld2450_target_count = effective_count;
             ESP_LOGI(SHS_TAG, "LD2450 target count: %d (raw: %d, filtered: %d in interference)",
                      effective_count, active_count, active_count - effective_count);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "LD2450 target count report FAILED - will retry");
         }
     }
@@ -975,7 +975,7 @@ static void shs_on_ld2450_target_update(const ld2450_target_t *targets, uint8_t 
         if (shs_zb_set_occ_bitmap(SHS_EP_LD2450_OCC, new_occupancy)) {
             shs_ld2450_occupancy = new_occupancy;
             ESP_LOGI(SHS_TAG, "LD2450 occupancy: %s", new_occupancy ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "LD2450 occupancy report FAILED - will retry");
         }
     }
@@ -1100,7 +1100,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE1)) {
             shs_zone1_occupied = zones[0].occupied;
             ESP_LOGI(SHS_TAG, "Zone 1: %s", zones[0].occupied ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 1 occupancy report FAILED - will retry");
         }
     }
@@ -1111,7 +1111,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_analog_attr(SHS_EP_ZONE1_TARGETS)) {
             shs_zone1_targets = zones[0].target_count;
             ESP_LOGI(SHS_TAG, "Zone 1 targets: %d", shs_zone1_targets);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 1 targets report FAILED - will retry");
         }
     }
@@ -1122,7 +1122,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE2)) {
             shs_zone2_occupied = zones[1].occupied;
             ESP_LOGI(SHS_TAG, "Zone 2: %s", zones[1].occupied ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 2 occupancy report FAILED - will retry");
         }
     }
@@ -1133,7 +1133,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_analog_attr(SHS_EP_ZONE2_TARGETS)) {
             shs_zone2_targets = zones[1].target_count;
             ESP_LOGI(SHS_TAG, "Zone 2 targets: %d", shs_zone2_targets);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 2 targets report FAILED - will retry");
         }
     }
@@ -1144,7 +1144,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE3)) {
             shs_zone3_occupied = zones[2].occupied;
             ESP_LOGI(SHS_TAG, "Zone 3: %s", zones[2].occupied ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 3 occupancy report FAILED - will retry");
         }
     }
@@ -1155,7 +1155,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_analog_attr(SHS_EP_ZONE3_TARGETS)) {
             shs_zone3_targets = zones[2].target_count;
             ESP_LOGI(SHS_TAG, "Zone 3 targets: %d", shs_zone3_targets);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 3 targets report FAILED - will retry");
         }
     }
@@ -1166,7 +1166,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE4)) {
             shs_zone4_occupied = zones[3].occupied;
             ESP_LOGI(SHS_TAG, "Zone 4: %s", zones[3].occupied ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 4 occupancy report FAILED - will retry");
         }
     }
@@ -1177,7 +1177,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_analog_attr(SHS_EP_ZONE4_TARGETS)) {
             shs_zone4_targets = zones[3].target_count;
             ESP_LOGI(SHS_TAG, "Zone 4 targets: %d", shs_zone4_targets);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 4 targets report FAILED - will retry");
         }
     }
@@ -1188,7 +1188,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_binary_attr(SHS_EP_LD2450_ZONE5)) {
             shs_zone5_occupied = zones[4].occupied;
             ESP_LOGI(SHS_TAG, "Zone 5: %s", zones[4].occupied ? "OCCUPIED" : "CLEAR");
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 5 occupancy report FAILED - will retry");
         }
     }
@@ -1199,7 +1199,7 @@ static void shs_on_ld2450_zone_update(const ld2450_zone_t *zones, bool occupancy
             shs_zb_report_analog_attr(SHS_EP_ZONE5_TARGETS)) {
             shs_zone5_targets = zones[4].target_count;
             ESP_LOGI(SHS_TAG, "Zone 5 targets: %d", shs_zone5_targets);
-        } else {
+        } else if (shs_zb_ready) {
             ESP_LOGW(SHS_TAG, "Zone 5 targets report FAILED - will retry");
         }
     }

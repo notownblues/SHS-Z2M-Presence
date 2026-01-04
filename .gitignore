@@ -5,3 +5,6 @@ dependencies.lock
 sdkconfig.old
 *.pyc
 __pycache__/
+.DS_Store
+*.log
+

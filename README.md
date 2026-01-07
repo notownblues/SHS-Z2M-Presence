@@ -2,7 +2,7 @@
 
 **Dual mmWave Presence Sensor Firmware for ESP32-C6 with Zigbee2MQTT Support**
 
-![SHS-Z2M-Presence Sensor](docs/sensor-image.jpg)
+![SHS-Z2M-Presence Sensor](docs/sensor.jpg)
 
 ---
 
@@ -55,6 +55,18 @@ For the best experience, install the **SHS Z2M Presence Zone Configurator** add-
 - GND → GND
 
 > **Note:** Some ESP32-C6 boards have 2 x 5V pins and some have one. Both sensors can share the same 5V pin or use separate ones if available.
+
+---
+
+## Sensor Orientation
+
+When placing the LD2450 sensor in your case, ensure the sensor is oriented exactly as shown in the image below.
+
+![LD2450 Orientation](docs/ld2450-mounting.webp)
+
+The 4 antenna patches (gold squares) must be positioned at the **top** of the enclosure, facing your detection area. This is critical for correct coordinate mapping.
+
+> ⚠️ **Important**: Incorrect sensor orientation will result in inverted target coordinates in the [SHS Z2M Presence Zones Add-on](https://github.com/notownblues/SHS-Z2M-Presence-Zones).
 
 ---
 
@@ -235,5 +247,6 @@ Contributions are welcome! Feel free to:
 - **Design enclosure cases** — I would love to see community-designed cases for this sensor!
 
 If you find this project useful, consider giving it a star!
+
 
 

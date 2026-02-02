@@ -168,8 +168,8 @@ function calculateZoneTargets(meta) {
 }
 
 const definition = {
-    // Accept both old and new model IDs for compatibility
-    zigbeeModel: ['SHS01', 'SHS01_Enhanced'],
+    // Accept old and new model IDs for compatibility
+    zigbeeModel: ['SHS-Z2M-Presence', 'SHS01', 'SHS01_Enhanced'],
     model: 'SHS01_Enhanced',
     vendor: 'SmartHomeScene',
     description: 'Enhanced Dual-Sensor Presence (LD2410C + LD2450) - Standard clusters only',

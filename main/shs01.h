@@ -65,13 +65,13 @@
 /* Channels */
 #define SHS_PRIMARY_CHANNEL_MASK        ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK
 
-/* Manufacturer / Model strings for Basic cluster (length-prefixed ASCII) */
-#define SHS_MANUFACTURER_NAME           "\x0E""SmartHomeScene"
-#define SHS_MODEL_IDENTIFIER            "\x10""SHS-Z2M-Presence"
+/* Manufacturer / Model strings for Basic cluster */
+#define SHS_MANUFACTURER_NAME           "SmartHomeScene"
+#define SHS_MODEL_IDENTIFIER            "SHS-Z2M-Presence"
 
-/* Optional Basic metadata (length-prefixed ZCL char strings) */
-#define SHS_BASIC_DATE_CODE             "\x0A""2025-12-12"
-#define SHS_BASIC_SW_BUILD_ID           "\x0B""SHS01-2.0.0"
+/* Optional Basic metadata */
+#define SHS_BASIC_DATE_CODE             "2025-12-12"
+#define SHS_BASIC_SW_BUILD_ID           "SHS01-2.0.0"
 
 /* ============================================================================
  * CLUSTER IDS

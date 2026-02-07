@@ -2031,6 +2031,11 @@ static void shs_boot_button_task(void *pv) {
 static void shs_ld2410_task(void *pvParameters) {
     ESP_LOGI(SHS_TAG, "LD2410 processing task started");
 
+    /* Wait for sensor to stabilize before applying config */
+    ESP_LOGI(SHS_TAG, "Waiting for LD2410 to stabilize before config...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    shs_apply_ld2410_config();
+
     uint32_t last_connected_time = 0;
     bool was_connected = false;
     const uint32_t RECOVERY_INTERVAL_MS = 30000;  // Try recovery every 30s if disconnected
@@ -2069,6 +2074,11 @@ static void shs_ld2410_task(void *pvParameters) {
 
 static void shs_ld2450_task(void *pvParameters) {
     ESP_LOGI(SHS_TAG, "LD2450 processing task started");
+
+    /* Wait for LD2450 to stabilize then apply zone configuration */
+    /* Combined: 500ms (was in ld2450_init) + 2000ms (was in app_main) */
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    shs_zone_cfg_apply_to_sensor();
 
     uint32_t last_connected_time = 0;
     bool was_connected = false;
@@ -3026,17 +3036,14 @@ void app_main(void) {
     /* Initialize light driver */
     light_driver_init(LIGHT_DEFAULT_OFF);
 
+    /* Start Zigbee task FIRST — must be responsive before coordinator interview */
+    xTaskCreate(shs_zigbee_task, "shs_zigbee_main", 8192, NULL, 5, NULL);
+
     /* Initialize LD2410 enhanced driver */
     ESP_ERROR_CHECK(ld2410_init());
 
     /* Register LD2410 callbacks */
     ld2410_register_state_callback(shs_on_state_change);
-
-    /* Apply initial configuration to LD2410 */
-    /* Wait 500ms for sensor to fully boot and stabilize data stream */
-    ESP_LOGI(SHS_TAG, "Waiting for LD2410 to stabilize before config...");
-    vTaskDelay(pdMS_TO_TICKS(500));
-    shs_apply_ld2410_config();
 
     /* Initialize LD2450 */
     ESP_LOGI(SHS_TAG, "Initializing LD2450 on UART0 GPIO18/19...");
@@ -3050,21 +3057,14 @@ void app_main(void) {
     shs_save_q = xQueueCreate(16, sizeof(shs_save_msg_t));
     xTaskCreate(shs_save_worker, "shs_save_worker", 3072, NULL, 3, NULL);
 
-    /* Create tasks - Start processing BEFORE applying config
-     * Sensor tasks at priority 4 (lower than Zigbee at 5) to prevent network issues */
-    xTaskCreate(shs_ld2410_task, "shs_ld2410_task", 4096, NULL, 4, NULL);
-    xTaskCreate(shs_ld2450_task, "shs_ld2450_task", 4096, NULL, 4, NULL);
-
     /* Load zone configuration from NVS */
     shs_zone_cfg_load_from_nvs();
 
-    /* Apply zone configuration AFTER task starts - give sensor time to stabilize */
-    vTaskDelay(pdMS_TO_TICKS(2000));  /* Wait 2 seconds for sensor to stabilize */
-    shs_zone_cfg_apply_to_sensor();
+    /* Create sensor tasks — config and zone setup deferred to task prologues
+     * Sensor tasks at priority 4 (lower than Zigbee at 5) to prevent network issues */
+    xTaskCreate(shs_ld2410_task, "shs_ld2410_task", 4096, NULL, 4, NULL);
+    xTaskCreate(shs_ld2450_task, "shs_ld2450_task", 4096, NULL, 4, NULL);
     xTaskCreate(shs_boot_button_task, "shs_boot_button", 8192, NULL, 4, NULL);
-
-    /* Start Zigbee task */
-    xTaskCreate(shs_zigbee_task, "shs_zigbee_main", 4096, NULL, 5, NULL);
 
     ESP_LOGI(SHS_TAG, "SHS01 firmware started - Position reporting via Zigbee (enable in Z2M)");
 }

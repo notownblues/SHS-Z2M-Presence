@@ -785,9 +785,6 @@ esp_err_t ld2450_init(void) {
     memset(&s_state, 0, sizeof(s_state));
     s_state.zone_config.type = LD2450_ZONE_DISABLED;
 
-    // Wait for sensor to stabilize
-    vTaskDelay(pdMS_TO_TICKS(500));
-
     // Flush any garbage data in UART buffer from power-on
     uart_flush(LD2450_UART_NUM);
     ESP_LOGI(TAG, "UART buffer flushed");

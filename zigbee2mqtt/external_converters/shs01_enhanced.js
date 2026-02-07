@@ -170,6 +170,23 @@ function calculateZoneTargets(meta) {
 const definition = {
     // Accept old and new model IDs for compatibility
     zigbeeModel: ['SHS-Z2M-Presence', 'SHS01', 'SHS01_Enhanced'],
+    fingerprint: [
+        {modelID: 'SHS-Z2M-Presence', manufacturerName: 'SmartHomeScene'},
+        {modelID: 'SHS01', manufacturerName: 'SmartHomeScene'},
+        {modelID: 'SHS01_Enhanced', manufacturerName: 'SmartHomeScene'},
+        {
+            type: 'router',
+            manufacturerName: 'SmartHomeScene',
+            endpoints: [
+                {ID: 1, profileID: 0x0104, deviceID: 0x0100,
+                 inputClusters: [0x0000, 0x0003, 0x0006, 0xFDCD], outputClusters: []},
+                {ID: 2, profileID: 0x0104, deviceID: 0x0107,
+                 inputClusters: [0x0406], outputClusters: []},
+                {ID: 4, profileID: 0x0104, deviceID: 0x000C,
+                 inputClusters: [0x0000, 0x000C], outputClusters: []},
+            ],
+        },
+    ],
     model: 'SHS01_Enhanced',
     vendor: 'SmartHomeScene',
     description: 'Enhanced Dual-Sensor Presence (LD2410C + LD2450) - Standard clusters only',

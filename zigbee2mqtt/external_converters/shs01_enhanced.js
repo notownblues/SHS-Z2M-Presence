@@ -748,9 +748,21 @@ const definition = {
         }
 
         // Bind standard clusters
-        await reporting.bind(endpoint1, coordinatorEndpoint, ['genOnOff']);
-        await reporting.bind(endpoint2, coordinatorEndpoint, ['msOccupancySensing']);
-        await reporting.bind(endpoint3, coordinatorEndpoint, ['msOccupancySensing']);
+        try {
+            await reporting.bind(endpoint1, coordinatorEndpoint, ['genOnOff']);
+        } catch (e) {
+            console.log('SHS01: Failed to bind genOnOff on EP1:', e.message);
+        }
+        try {
+            await reporting.bind(endpoint2, coordinatorEndpoint, ['msOccupancySensing']);
+        } catch (e) {
+            console.log('SHS01: Failed to bind msOccupancySensing on EP2:', e.message);
+        }
+        try {
+            await reporting.bind(endpoint3, coordinatorEndpoint, ['msOccupancySensing']);
+        } catch (e) {
+            console.log('SHS01: Failed to bind msOccupancySensing on EP3:', e.message);
+        }
 
         // Bind config cluster for zone target count reports
         try {
@@ -761,32 +773,56 @@ const definition = {
         }
 
         // Bind LD2410C moving/static target endpoints (EP17/18)
-        if (endpoint17) await reporting.bind(endpoint17, coordinatorEndpoint, ['genBinaryInput']);
-        if (endpoint18) await reporting.bind(endpoint18, coordinatorEndpoint, ['genBinaryInput']);
+        if (endpoint17) {
+            try {
+                await reporting.bind(endpoint17, coordinatorEndpoint, ['genBinaryInput']);
+            } catch (e) {
+                console.log('SHS01: Failed to bind genBinaryInput on EP17:', e.message);
+            }
+        }
+        if (endpoint18) {
+            try {
+                await reporting.bind(endpoint18, coordinatorEndpoint, ['genBinaryInput']);
+            } catch (e) {
+                console.log('SHS01: Failed to bind genBinaryInput on EP18:', e.message);
+            }
+        }
 
         // Bind LD2450 target count (genAnalogInput)
-        await reporting.bind(endpoint4, coordinatorEndpoint, ['genAnalogInput']);
+        try {
+            await reporting.bind(endpoint4, coordinatorEndpoint, ['genAnalogInput']);
+        } catch (e) {
+            console.log('SHS01: Failed to bind genAnalogInput on EP4:', e.message);
+        }
 
         // Bind LD2450 zones (genBinaryInput)
-        await reporting.bind(endpoint5, coordinatorEndpoint, ['genBinaryInput']);
-        await reporting.bind(endpoint6, coordinatorEndpoint, ['genBinaryInput']);
-        await reporting.bind(endpoint7, coordinatorEndpoint, ['genBinaryInput']);
-        if (endpoint22) await reporting.bind(endpoint22, coordinatorEndpoint, ['genBinaryInput']);
-        if (endpoint23) await reporting.bind(endpoint23, coordinatorEndpoint, ['genBinaryInput']);
+        for (const [ep, id] of [[endpoint5, 5], [endpoint6, 6], [endpoint7, 7], [endpoint22, 22], [endpoint23, 23]]) {
+            if (ep) {
+                try {
+                    await reporting.bind(ep, coordinatorEndpoint, ['genBinaryInput']);
+                } catch (e) {
+                    console.log(`SHS01: Failed to bind genBinaryInput on EP${id}:`, e.message);
+                }
+            }
+        }
 
         // Bind zone target count endpoints (EP19/20/21/24/25 - genAnalogInput)
-        if (endpoint19) await reporting.bind(endpoint19, coordinatorEndpoint, ['genAnalogInput']);
-        if (endpoint20) await reporting.bind(endpoint20, coordinatorEndpoint, ['genAnalogInput']);
-        if (endpoint21) await reporting.bind(endpoint21, coordinatorEndpoint, ['genAnalogInput']);
-        if (endpoint24) await reporting.bind(endpoint24, coordinatorEndpoint, ['genAnalogInput']);
-        if (endpoint25) await reporting.bind(endpoint25, coordinatorEndpoint, ['genAnalogInput']);
+        for (const [ep, id] of [[endpoint19, 19], [endpoint20, 20], [endpoint21, 21], [endpoint24, 24], [endpoint25, 25]]) {
+            if (ep) {
+                try {
+                    await reporting.bind(ep, coordinatorEndpoint, ['genAnalogInput']);
+                } catch (e) {
+                    console.log(`SHS01: Failed to bind genAnalogInput on EP${id}:`, e.message);
+                }
+            }
+        }
 
         // Bind position data endpoints (EP8-16) - genAnalogInput
         for (const ep of positionEndpoints) {
             try {
                 await reporting.bind(ep, coordinatorEndpoint, ['genAnalogInput']);
             } catch (e) {
-                console.log(`Failed to bind position endpoint ${ep.ID}:`, e);
+                console.log(`SHS01: Failed to bind genAnalogInput on EP${ep.ID}:`, e.message);
             }
         }
 
@@ -799,7 +835,7 @@ const definition = {
                 reportableChange: 0,
             }]);
         } catch (e) {
-            console.log('Failed to configure LD2410C occupancy reporting:', e);
+            console.log('SHS01: Failed to configure LD2410C occupancy reporting on EP2:', e.message);
         }
 
         // Configure reporting for LD2410C manufacturer-specific attrs (0xF001, 0xF002) - like backup
@@ -814,17 +850,21 @@ const definition = {
             try {
                 await endpoint2.configureReporting('msOccupancySensing', repCustom);
             } catch (e2) {
-                console.log('Failed to configure LD2410C mfr-specific reporting:', e2);
+                console.log('SHS01: Failed to configure LD2410C mfr-specific reporting on EP2:', e2.message);
             }
         }
 
         // Configure reporting for target count (only on change)
-        await endpoint4.configureReporting('genAnalogInput', [{
-            attribute: 'presentValue',
-            minimumReportInterval: 1,
-            maximumReportInterval: 3600,
-            reportableChange: 0.5,  // Report when count changes by 0.5 (i.e., any integer change)
-        }]);
+        try {
+            await endpoint4.configureReporting('genAnalogInput', [{
+                attribute: 'presentValue',
+                minimumReportInterval: 1,
+                maximumReportInterval: 3600,
+                reportableChange: 0.5,  // Report when count changes by 0.5 (i.e., any integer change)
+            }]);
+        } catch (e) {
+            console.log('SHS01: Failed to configure target count reporting on EP4:', e.message);
+        }
 
         // Configure reporting for zone target counts (EP19/20/21/24/25)
         for (const ep of [endpoint19, endpoint20, endpoint21, endpoint24, endpoint25]) {
@@ -837,7 +877,7 @@ const definition = {
                         reportableChange: 0.5,  // Report when count changes
                     }]);
                 } catch (e) {
-                    console.log(`Failed to configure zone target reporting for EP${ep.ID}:`, e);
+                    console.log(`SHS01: Failed to configure zone target reporting on EP${ep.ID}:`, e.message);
                 }
             }
         }
@@ -845,12 +885,16 @@ const definition = {
         // Configure reporting for zone occupancy (only on change)
         for (const ep of [endpoint5, endpoint6, endpoint7, endpoint22, endpoint23]) {
             if (ep) {
-                await ep.configureReporting('genBinaryInput', [{
-                    attribute: 'presentValue',
-                    minimumReportInterval: 1,
-                    maximumReportInterval: 3600,
-                    reportableChange: 1,  // Report on state change
-                }]);
+                try {
+                    await ep.configureReporting('genBinaryInput', [{
+                        attribute: 'presentValue',
+                        minimumReportInterval: 1,
+                        maximumReportInterval: 3600,
+                        reportableChange: 1,  // Report on state change
+                    }]);
+                } catch (e) {
+                    console.log(`SHS01: Failed to configure zone occupancy reporting on EP${ep.ID}:`, e.message);
+                }
             }
         }
 
@@ -865,7 +909,7 @@ const definition = {
                         reportableChange: 1,  // Report on state change
                     }]);
                 } catch (e) {
-                    console.log(`Failed to configure LD2410C target reporting for EP${ep.ID}:`, e);
+                    console.log(`SHS01: Failed to configure LD2410C target reporting on EP${ep.ID}:`, e.message);
                 }
             }
         }
@@ -880,7 +924,7 @@ const definition = {
                     reportableChange: 1,  // Report when value changes by 1mm
                 }]);
             } catch (e) {
-                console.log(`Failed to configure position reporting for EP${ep.ID}:`, e);
+                console.log(`SHS01: Failed to configure position reporting on EP${ep.ID}:`, e.message);
             }
         }
 
@@ -896,7 +940,7 @@ const definition = {
                 ATTR_POSITION_REPORTING,
             ]);
         } catch (e) {
-            console.log('Failed to read config:', e);
+            console.log('SHS01: Failed to read config on EP1:', e.message);
         }
 
         // Read zone target counts
@@ -909,14 +953,14 @@ const definition = {
                 ATTR_ZONE5_TARGETS_CFG,
             ]);
         } catch (e) {
-            console.log('Failed to read zone target counts:', e);
+            console.log('SHS01: Failed to read zone target counts on EP1:', e.message);
         }
 
         // Read initial LD2410C occupancy and target states (EP2)
         try {
             await endpoint2.read('msOccupancySensing', ['occupancy']);
         } catch (e) {
-            console.log('Failed to read LD2410C occupancy:', e);
+            console.log('SHS01: Failed to read LD2410C occupancy on EP2:', e.message);
         }
         try {
             await endpoint2.read('msOccupancySensing', [
@@ -924,40 +968,43 @@ const definition = {
                 ATTR_MS_STATIC,
             ]);
         } catch (e) {
-            console.log('Failed to read LD2410C target states:', e);
+            console.log('SHS01: Failed to read LD2410C target states on EP2:', e.message);
         }
 
         // Read initial LD2450 occupancy (EP3)
         try {
             await endpoint3.read('msOccupancySensing', ['occupancy']);
         } catch (e) {
-            console.log('Failed to read LD2450 occupancy:', e);
+            console.log('SHS01: Failed to read LD2450 occupancy on EP3:', e.message);
         }
 
         // Read initial LD2450 target count (EP4)
         try {
             await endpoint4.read('genAnalogInput', ['presentValue']);
         } catch (e) {
-            console.log('Failed to read LD2450 target count:', e);
+            console.log('SHS01: Failed to read LD2450 target count on EP4:', e.message);
         }
 
         // Read initial zone occupancy values (EP5/6/7/22/23)
-        try {
-            await endpoint5.read('genBinaryInput', ['presentValue']);
-            await endpoint6.read('genBinaryInput', ['presentValue']);
-            await endpoint7.read('genBinaryInput', ['presentValue']);
-            if (endpoint22) await endpoint22.read('genBinaryInput', ['presentValue']);
-            if (endpoint23) await endpoint23.read('genBinaryInput', ['presentValue']);
-        } catch (e) {
-            console.log('Failed to read zone occupancy:', e);
+        for (const [ep, id] of [[endpoint5, 5], [endpoint6, 6], [endpoint7, 7], [endpoint22, 22], [endpoint23, 23]]) {
+            if (ep) {
+                try {
+                    await ep.read('genBinaryInput', ['presentValue']);
+                } catch (e) {
+                    console.log(`SHS01: Failed to read zone occupancy on EP${id}:`, e.message);
+                }
+            }
         }
 
         // Read initial LD2410C moving/static target states (EP17/18 - reliable genBinaryInput)
-        try {
-            if (endpoint17) await endpoint17.read('genBinaryInput', ['presentValue']);
-            if (endpoint18) await endpoint18.read('genBinaryInput', ['presentValue']);
-        } catch (e) {
-            console.log('Failed to read LD2410C target states:', e);
+        for (const [ep, id] of [[endpoint17, 17], [endpoint18, 18]]) {
+            if (ep) {
+                try {
+                    await ep.read('genBinaryInput', ['presentValue']);
+                } catch (e) {
+                    console.log(`SHS01: Failed to read LD2410C target state on EP${id}:`, e.message);
+                }
+            }
         }
     },
 };
